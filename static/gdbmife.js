@@ -27,18 +27,42 @@ class TokenGenerator {
 };
 var commandTokenGenerator = new TokenGenerator();
 
-function enableExecButtons()
-{
+function enableExecButtons() {
     stepElement.removeAttribute("disabled");
     nextElement.removeAttribute("disabled");
     restartElement.removeAttribute("disabled");
 }
 
-function disableExecButtons()
-{
+function disableExecButtons() {
     stepElement.setAttribute("disabled", "");
     nextElement.setAttribute("disabled", "");
     restartElement.setAttribute("disabled", "");
+}
+
+const stateElementClass = "u-large c-button";
+
+function reportExecState(state, line) {
+    switch (state) {
+        case "exited-normally":
+            stateElement.innerHTML = "exited normally";
+            stateElement.className = stateElementClass + " c-button--success";
+            break;
+        case "exited":
+            stateElement.innerHTML = "exited with errors";
+            stateElement.className = stateElementClass + " c-button--error";
+            break;
+        case "running":
+            stateElement.innerHTML = "program running";
+            stateElement.className = stateElementClass + " c-button--warning";
+            break;
+        case "stopped":
+            stateElement.innerHTML = `program paused - next line: ${line}`;
+            stateElement.className = stateElementClass + " c-button--info";
+            break;
+        default:
+            stateElement.innerHTML = "unknown error";
+            stateElement.className = stateElementClass + " c-button--error";
+    }
 }
 
 function updateSourceCode(dic) {
@@ -48,17 +72,13 @@ function updateSourceCode(dic) {
         }
         if (dic.payload.hasOwnProperty("reason")) {
             if (dic.payload.reason === "exited-normally") {
-                stateElement.innerHTML = "exited normally";
-                stateElement.classList.remove("c-button--warning");
-                stateElement.classList.add("c-button--success")
+                reportExecState("exited-normally");
             }
             else if (dic.payload.reason === "exited") {
-                stateElement.innerHTML = "exited with errors";
-                stateElement.classList.remove("c-button--warning");
-                stateElement.classList.add("c-button--error");
+                reportExecState("exited");
             }
             else {
-                stateElement.innerHTML = "running program - next line: " + lineNum;
+                reportExecState("stopped", lineNum);
                 dataLine = sourcePreElement.setAttribute("data-line", lineNum);
                 Prism.highlightElement(sourceElement);
                 let lnr = document.getElementsByClassName("line-numbers-rows")[0];
@@ -241,7 +261,7 @@ function loadAndSendFile() {
 }
 
 // Send command to debugger
-const commandEndpoint = "command"
+const commandEndpoint = "command";
 function sendCommand(command) {
     if (command !== '') {
         console.log("Command: ", command);
@@ -301,6 +321,7 @@ function getFrames() {
 
 function stepButtonAction() {
     disableExecButtons();
+    reportExecState("running");
     cToken = commandTokenGenerator.generateToken();
     sendCommand(`${cToken}-exec-step`)
         .then(result => {
@@ -312,6 +333,7 @@ function stepButtonAction() {
 
 function nextButtonAction() {
     disableExecButtons();
+    reportExecState("running");
     cToken = commandTokenGenerator.generateToken();
     sendCommand(`${cToken}-exec-next`)
         .then(result => {
@@ -323,17 +345,22 @@ function nextButtonAction() {
 
 function restartButtonAction() {
     disableExecButtons();
+    reportExecState("running");
     cToken = commandTokenGenerator.generateToken();
     sendCommand(`${cToken}-exec-run`)
         .then(result => {
             console.log(result);
-            stateElement.innerHTML = "running program";
-            stateElement.classList.remove("c-button--error");
-            stateElement.classList.remove("c-button--success");
-            stateElement.classList.add("c-button--warning");
             updatePanels(result);
             getFrames();
         });
+}
+
+const closeEndpoint = "close";
+function closeSession(event) {
+    const formData = new FormData();
+    formData.append("sessionToken", sessionToken);
+    let requestUrl = apiUrl + closeEndpoint;
+    navigator.sendBeacon(requestUrl, formData);
 }
 
 commandElement.addEventListener("change", commandElementChange);
@@ -341,5 +368,6 @@ fileField.addEventListener("change", loadAndSendFile);
 stepElement.addEventListener("click", stepButtonAction);
 nextElement.addEventListener("click", nextButtonAction);
 restartElement.addEventListener("click", restartButtonAction);
+window.addEventListener("unload", closeSession);
 
 startGdb();

@@ -85,3 +85,21 @@ def send_command():
     command = request.args.get('command')
     response = gdbmis[sessionToken].write(command, raise_error_on_timeout = False)
     return jsonify(response)
+
+@app.route('/close', methods=['GET', 'POST'])
+def close_session():
+    if request.method == 'POST':
+        sessionToken = request.form['sessionToken']
+        print(f'Closing session with token {sessionToken}')
+        try:
+            gdbmis[sessionToken].exit()
+            del gdbmis[sessionToken]
+            os.system(f'rm -rf {os.path.join(workdir, sessionToken)}')
+            response = f'Session with token {sessionToken} closed.'
+        except KeyError:
+            response = f'Tried to close inexistent session with token: {sessionToken}'
+        finally:
+            print(response)
+            return ""
+    else:
+        return ""
