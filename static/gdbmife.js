@@ -84,9 +84,21 @@ function updateSourceCode(dic) {
                 let lnr = document.getElementsByClassName("line-numbers-rows")[0];
                 let targetLine = (lineNum > 5) ? lineNum - 5 : lineNum;
                 let atLine = lnr.children[targetLine - 1];
-                atLine.scrollIntoView();
+                if (atLine) {
+                    atLine.scrollIntoView();
+                }
             }
         }
+    }
+    if (dic.message === "done" && dic.hasOwnProperty("payload") && dic.payload && dic.payload.hasOwnProperty("bkpt")) {
+        lineNum = dic.payload.bkpt.line;
+        reportExecState("stopped", lineNum);
+        dataLine = sourcePreElement.setAttribute("data-line", lineNum);
+        Prism.highlightElement(sourceElement);
+        let lnr = document.getElementsByClassName("line-numbers-rows")[0];
+        let targetLine = (lineNum > 5) ? lineNum - 5 : lineNum;
+        let atLine = lnr.children[targetLine - 1];
+        atLine.scrollIntoView();
     }
 }
 
@@ -246,8 +258,6 @@ function sendFile() {
         .then(response => response.json())
         .then(result => {
             console.log(result);
-            stateElement.innerHTML = "running program";
-            stateElement.classList.add("c-button--warning");
             updatePanels(result["response"]);
             enableExecButtons();
         });
@@ -295,23 +305,25 @@ function getFrames() {
     sendCommand(`${cToken}-stack-list-frames`)
         .then(async (result) => {
             console.log(result);
-            let frameList = result[0].payload.stack
-            for (frame of frameList) {
-                cToken = commandTokenGenerator.generateToken();
-                framesMap[cToken] = {
-                    'frameInfo': frame,
-                    'variables': []
-                };
-                let result = await sendCommand(`${cToken}-stack-list-variables --thread 1 --frame ${frame.level} --all-values`);
-                console.log(result);
-                let answer = result[0];
-                framesMap[answer.token].variables = answer.payload.variables;
-                let nToken = commandTokenGenerator.generateToken();
-                let newResult = await sendCommand(`${nToken}-stack-list-variables --thread 1 --frame ${frame.level} --simple-values`);
-                console.log(newResult);
-                let newAnswer = newResult[0];
-                for (let i = 0; i < newAnswer.payload.variables.length; i++) {
-                    framesMap[answer.token].variables[i].type = newAnswer.payload.variables[i].type;
+            if (result[0].payload.hasOwnProperty("stack")) {
+                let frameList = result[0].payload.stack
+                for (frame of frameList) {
+                    cToken = commandTokenGenerator.generateToken();
+                    framesMap[cToken] = {
+                        'frameInfo': frame,
+                        'variables': []
+                    };
+                    let result = await sendCommand(`${cToken}-stack-list-variables --thread 1 --frame ${frame.level} --all-values`);
+                    console.log(result);
+                    let answer = result[0];
+                    framesMap[answer.token].variables = answer.payload.variables;
+                    let nToken = commandTokenGenerator.generateToken();
+                    let newResult = await sendCommand(`${nToken}-stack-list-variables --thread 1 --frame ${frame.level} --simple-values`);
+                    console.log(newResult);
+                    let newAnswer = newResult[0];
+                    for (let i = 0; i < newAnswer.payload.variables.length; i++) {
+                        framesMap[answer.token].variables[i].type = newAnswer.payload.variables[i].type;
+                    }
                 }
             }
             drawFrames(framesMap);
@@ -348,9 +360,10 @@ function restartButtonAction() {
     reportExecState("running");
     cToken = commandTokenGenerator.generateToken();
     sendCommand(`${cToken}-exec-run`)
-        .then(result => {
+        .then(async (result) => {
             console.log(result);
-            updatePanels(result);
+            let framesResult = await sendCommand(`-stack-list-frames`);
+            updatePanels(framesResult);
             getFrames();
         });
 }
