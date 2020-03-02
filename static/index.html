@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+
+<head>
+    <!-- UIkit CSS -->
+    <!-- <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uikit@3.3.0/dist/css/uikit.min.css" /> -->
+    <!-- Prism CSS -->
+    <link href="themes/prism.css" rel="stylesheet" />
+    <!-- Blaze -->
+    <link rel="stylesheet" href="https://unpkg.com/@blaze/css@x.x.x/dist/blaze/blaze.css">
+    <script src="https://unpkg.com/@blaze/atoms@x.x.x/dist/blaze-atoms.js"></script>
+
+    <!-- Bulma -->
+    <!-- <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.8.0/css/bulma.min.css"> -->
+    <script defer src="https://use.fontawesome.com/releases/v5.3.1/js/all.js"></script>
+    <link rel="stylesheet" href="themes/styles.css">
+</head>
+
+<body>
+    <div class="c-card u-high">
+        <div class="o-grid c-card__body">
+            <div class="o-grid__cell o-grid__cell--width-12">
+                <div class="c-file-upload">
+                    <button class="c-button c-button--error c-button--block u-large">Upload source file</button>
+                    <input id="file" type="file" />
+                </div>
+            </div>
+            <div class="o-grid__cell o-grid__cell--width-10">
+                <button id="step" type="button" class="c-button c-button--block c-button--info u-large" disabled>
+                    Step
+                </button>
+            </div>
+            <div class="o-grid__cell o-grid__cell--width-10">
+                <button id="next" type="button"
+                    class="c-button c-button--block c-button--brand c-button--brand u-large" disabled>
+                    Next
+                </button>
+            </div>
+            <div class="o-grid__cell o-grid__cell--width-10">
+                <button id="restart" type="button" class="c-button c-button--block c-button--warning u-large" disabled>
+                    Restart
+                </button>
+            </div>
+            <div class="o-grid__cell o-grid__cell--width-38">
+                <input id="command" class="c-field u-large" placeholder="Type a command..." type="text" />
+            </div>
+            <div class="o-grid__cell o-grid__cell--width-20 u-right">
+                <button id="state" class="u-large c-button" disabled>
+                    No program loaded
+                    <!-- Program state -->
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="o-container">
+        <p></p>
+    </div>
+
+    <div class="o-grid">
+        <div class="o-grid__cell o-grid__cell--width-60">
+            <div class="c-card u-high">
+                <div role="separator" class="c-card__item c-card__item--divider">
+                    <div class="o-grid o-grid--no-gutter">
+                        <div class="o-grid__cell o-grid__cell--width-40">
+                            <span class="u-gradient-text u-gradient-text--info u-xlarge">
+                                Source code
+                            </span>
+                        </div>
+                        <div id="file-name"
+                            class="o-grid__cell o-grid__cell--width-60 u-xlarge u-text--mono u-text--loud u-right">
+                            <!-- Source file name -->
+                        </div>
+                    </div>
+                </div>
+                <div class="o-panel-container" id="source-panel" style="height: 800px">
+                    <div class="o-panel u-large">
+                        <pre id="sourcecode" class="line-numbers content">
+                            <code id="source" class="language-cpp">
+                                <!-- Source here -->
+                            </code>
+                        </pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="o-grid__cell o-grid__cell--width-40">
+            <div class="c-card u-high">
+                <div role="separator" class="c-card__item c-card__item--divider">
+                    <div class="u-gradient-text u-gradient-text--info u-xlarge">
+                        Stack
+                    </div>
+                </div>
+                <section id="stack" class="c-card__item c-card__item--pane">
+                    <!-- Frames here -->
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <!-- <div class="o-grid__cell o-grid__cell--width-30">
+            <div class="c-card u-high">
+                <blaze-card-header>
+                    <h2 class="c-heading">
+                        Machine Code
+                    </h2>
+                </blaze-card-header>
+                <section id="disassembly" class="c-card__item c-card__item--pane">
+                     Disassembly here 
+                </section>
+            </div>
+        </div> -->
+    </div>
+
+    <script src="prism.js"></script>
+    <script src="gdbmife.js"></script>
+</body>
+
+
+</html>
