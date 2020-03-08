@@ -286,6 +286,15 @@ function sendCommand(command) {
     }
 }
 
+const memoryEndpoint = "memory";
+function getMemory() {
+    console.log(`getMemory: ${sessionToken}`)
+    let requestUrl = apiUrl + memoryEndpoint
+        + "?sessionToken=" + sessionToken;
+    return fetch(encodeURI(requestUrl))
+        .then(response => response.json());
+}
+
 function commandElementChange(event) {
     disableExecButtons();
     sendCommand(event.target.value)
@@ -336,10 +345,12 @@ function stepButtonAction() {
     reportExecState("running");
     cToken = commandTokenGenerator.generateToken();
     sendCommand(`${cToken}-exec-step`)
-        .then(result => {
+        .then(async (result) => {
             console.log(result);
             updatePanels(result);
             getFrames();
+            let memory = await getMemory();
+            console.log(memory);
         });
 }
 
