@@ -31,8 +31,8 @@
                 </button>
             </div>
             <div class="o-grid__cell o-grid__cell--width-10">
-                <button id="next" type="button"
-                    class="c-button c-button--block c-button--brand c-button--brand u-large" disabled>
+                <button id="next" type="button" class="c-button c-button--block c-button--brand c-button--brand u-large"
+                    disabled>
                     Next
                 </button>
             </div>
@@ -58,7 +58,7 @@
     </div>
 
     <div class="o-grid">
-        <div class="o-grid__cell o-grid__cell--width-60">
+        <div class="o-grid__cell o-grid__cell--width-45">
             <div class="c-card u-high">
                 <div role="separator" class="c-card__item c-card__item--divider">
                     <div class="o-grid o-grid--no-gutter">
@@ -85,7 +85,7 @@
             </div>
         </div>
 
-        <div class="o-grid__cell o-grid__cell--width-40">
+        <div class="o-grid__cell o-grid__cell--width-35">
             <div class="c-card u-high">
                 <div role="separator" class="c-card__item c-card__item--divider">
                     <div class="u-gradient-text u-gradient-text--info u-xlarge">
@@ -97,20 +97,21 @@
                 </section>
             </div>
         </div>
-    </div>
 
-    <!-- <div class="o-grid__cell o-grid__cell--width-30">
+        <div class="o-grid__cell o-grid__cell--width-20">
             <div class="c-card u-high">
-                <blaze-card-header>
-                    <h2 class="c-heading">
-                        Machine Code
-                    </h2>
-                </blaze-card-header>
-                <section id="disassembly" class="c-card__item c-card__item--pane">
-                     Disassembly here 
+                <div role="separator" class="c-card__item c-card__item--divider">
+                    <div class="u-gradient-text u-gradient-text--info u-xlarge">
+                        Heap
+                    </div>
+                </div>
+                <section id="heap" class="c-card__item c-card__item--pane">
+                    <canvas id="heapCanvas">
+                        <p>Your browser doesn't support canvas</p>
+                    </canvas>
                 </section>
             </div>
-        </div> -->
+        </div>
     </div>
 
     <script src="prism.js"></script>

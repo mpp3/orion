@@ -12,9 +12,75 @@ const stepElement = document.getElementById("step");
 const nextElement = document.getElementById("next");
 const restartElement = document.getElementById("restart");
 const stackElement = document.getElementById("stack");
+const heapElement = document.getElementById("heap");
+const canvas = document.getElementById("heapCanvas");
+canvas.width = heapElement.offsetWidth;
+canvas.height = 0.975 * sourcePanelElement.offsetHeight;
+var ctx = canvas.getContext("2d");
+ctx.strokeStyle = "rgb(255, 0, 0)";
 
 var sessionToken = 0;
 var lineNum = 0;
+
+const heapMargin = 0.05;
+var heap = { memory: [], sessionToken: 0 };
+var heapRange = { start: 0, end: 0 };
+
+function heapAutoZoom() {
+    let firstAddress = minAddress();
+    let lastAddress = maxAddress();
+    let addressRange = lastAddress - firstAddress;
+    console.log(firstAddress, " ", lastAddress);
+    return {
+        start: firstAddress - heapMargin * addressRange,
+        end: lastAddress + heapMargin * addressRange
+    };
+}
+
+function minAddress() {
+    let min = Infinity;
+    console.log(heap.memory.length);
+    for (var i = 0; i < heap.memory.length; i++) {
+        let addressNum = parseInt(heap.memory[i].address, 16);
+        console.log(addressNum);
+        if (addressNum < min) {
+            min = addressNum;
+        }
+    }
+    return min;
+}
+
+function maxAddress() {
+    let max = -Infinity;
+    let maxPos = 0;
+    for (var i = 0; i < heap.memory.length; i++) {
+        let addressNum = parseInt(heap.memory[i].address, 16);
+        if (addressNum > max) {
+            max = addressNum;
+            maxPos = i;
+        }
+    }
+    return max + ((heap.memory.length > 0) ? heap.memory[maxPos].size : 0);
+}
+
+function updateHeap() {
+    let heapRange = heapAutoZoom();
+    console.log(heapRange.start, " ", heapRange.end);
+    for (var i = 0; i < heap.memory.length; i++) {
+        heapDrawAlloc(heap.memory[i], heapRange);
+    }
+}
+
+function heapDrawAlloc(allocation, heapRange) {
+    let firstAddress = parseInt(allocation.address, 16);
+    let lastAddress = firstAddress + allocation.size;
+    let scale = canvas.height / (lastAddress - firstAddress);
+    let startOffset = firstAddress - heapRange.start;
+    let endOffset = lastAddress - heapRange.end;
+    let width = canvas.width;
+    let height = (endOffset - startOffset) * scale;
+    ctx.strokeRect(0, startOffset * scale, width, height);
+}
 
 class TokenGenerator {
     constructor() {
@@ -349,8 +415,10 @@ function stepButtonAction() {
             console.log(result);
             updatePanels(result);
             getFrames();
-            let memory = await getMemory();
-            console.log(memory);
+            getMemory();
+            heap = await getMemory();
+            console.log(heap.memory);
+            updateHeap(heap.memory);
         });
 }
 
@@ -359,10 +427,13 @@ function nextButtonAction() {
     reportExecState("running");
     cToken = commandTokenGenerator.generateToken();
     sendCommand(`${cToken}-exec-next`)
-        .then(result => {
+        .then(async (result) => {
             console.log(result);
             updatePanels(result);
             getFrames();
+            heap = await getMemory();
+            console.log(heap.memory);
+            updateHeap(heap.memory);
         });
 }
 

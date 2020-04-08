@@ -11,3 +11,9 @@
   background: inherit;
   margin: inherit;
 }
+
+#canvas {
+  border: solid #ff0000;
+  visibility: visible;
+  overflow: visible;
+}
