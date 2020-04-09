@@ -17,7 +17,8 @@ const canvas = document.getElementById("heapCanvas");
 canvas.width = heapElement.offsetWidth;
 canvas.height = 0.975 * sourcePanelElement.offsetHeight;
 var ctx = canvas.getContext("2d");
-ctx.strokeStyle = "rgb(255, 0, 0)";
+ctx.strokeStyle = "rgb(0, 0, 0)";
+ctx.fillStyle = "rgb(200, 50, 0)";
 
 var sessionToken = 0;
 var lineNum = 0;
@@ -25,24 +26,27 @@ var lineNum = 0;
 const heapMargin = 0.05;
 var heap = { memory: [], sessionToken: 0 };
 var heapRange = { start: 0, end: 0 };
+const minAddressRange = 200;
 
 function heapAutoZoom() {
     let firstAddress = minAddress();
     let lastAddress = maxAddress();
     let addressRange = lastAddress - firstAddress;
-    console.log(firstAddress, " ", lastAddress);
+    if (addressRange < minAddressRange) {
+        lastAddress = firstAddress + minAddressRange;
+    }
+    console.log("Heap length: ", heap.memory.length);
+    console.log("Heap address range: ", firstAddress, " - ", lastAddress);
     return {
-        start: firstAddress - heapMargin * addressRange,
-        end: lastAddress + heapMargin * addressRange
+        start: firstAddress,
+        end: lastAddress
     };
 }
 
 function minAddress() {
     let min = Infinity;
-    console.log(heap.memory.length);
     for (var i = 0; i < heap.memory.length; i++) {
         let addressNum = parseInt(heap.memory[i].address, 16);
-        console.log(addressNum);
         if (addressNum < min) {
             min = addressNum;
         }
@@ -64,22 +68,24 @@ function maxAddress() {
 }
 
 function updateHeap() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     let heapRange = heapAutoZoom();
-    console.log(heapRange.start, " ", heapRange.end);
+    console.log("Heap range: ", heapRange.start, " - ", heapRange.end);
     for (var i = 0; i < heap.memory.length; i++) {
         heapDrawAlloc(heap.memory[i], heapRange);
     }
 }
 
 function heapDrawAlloc(allocation, heapRange) {
+    let vScale = canvas.height / (heapRange.end - heapRange.start);
     let firstAddress = parseInt(allocation.address, 16);
-    let lastAddress = firstAddress + allocation.size;
-    let scale = canvas.height / (lastAddress - firstAddress);
     let startOffset = firstAddress - heapRange.start;
-    let endOffset = lastAddress - heapRange.end;
-    let width = canvas.width;
-    let height = (endOffset - startOffset) * scale;
-    ctx.strokeRect(0, startOffset * scale, width, height);
+    let topLeftCoord = startOffset * vScale;
+    let width = canvas.width * 0.95;
+    let height = vScale * allocation.size;
+    ctx.fillRect(0, topLeftCoord, width, height * 0.95);
+    ctx.strokeRect(0, topLeftCoord, width, height);
+    console.log(`Allocation coordinates: (0, ${topLeftCoord}) - (${width}, ${topLeftCoord + height})`);
 }
 
 class TokenGenerator {

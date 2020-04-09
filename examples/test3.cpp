@@ -1,11 +1,11 @@
 #include "dyno.h"
 
 #include <iostream>
+#include <vector>
 
 int main()
 {
-    int *px = new int;
-    *px = 25;
-    std::cout << *px << "\n";
-    delete px;
+    std::vector<int> v;
+    v.push_back(55);
+    std::cout << v[0];
 }
