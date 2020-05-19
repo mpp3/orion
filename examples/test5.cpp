@@ -12,4 +12,8 @@ int main()
     double* pd3 = new double(3.0);
     double* pd4 = new double(4.0);
     double* pd5 = new double(5.0);
+    delete pi5;
+    int * pi6 = new int(6);
+    delete pd1;
+    double * pd6 = new double(6.0);
 }

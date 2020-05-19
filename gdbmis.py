@@ -13,7 +13,7 @@ from werkzeug.utils import secure_filename
 workdir = 'workdir'
 outObjName = 'a.out'
 memFileName = 'mem.txt'
-
+outputFileName = 'output.txt'
 
 def produceObj(filename, sessionToken):
     compileCommand = f'g++ -g -std=c++11 -I. -Iinclude {os.path.join(workdir, sessionToken, filename)} -o {os.path.join(workdir, sessionToken, outObjName)}'
@@ -53,6 +53,41 @@ def start():
     sessionToken = str(sessionTokenGenerator.generateSessionToken())
     gdbmis[sessionToken] = GdbController()
     return {'sessionToken': sessionToken}
+
+@app.route('/code', methods=['GET', 'POST'])
+def code():
+    if request.method == 'POST':
+        sessionToken = request.form['sessionToken']
+        print(f'sessionToken received by index(): {sessionToken}')
+        if sessionToken == '':
+            sessionToken = str(sessionTokenGenerator.generateSessionToken())
+            gdbmis[sessionToken] = GdbController()
+        if 'code' not in request.form:
+            flash('No code part')
+            return redirect('/static/index.html')
+        code = request.form['code']
+        if len(code) == 0:
+            flash('Empty code')
+            return redirect('/static/index.html')
+        if code:
+            fullFilename = os.path.join(app.config['UPLOAD_FOLDER'], sessionToken + "_upload.cpp")
+            with open(fullFilename, "w") as sourcefile:
+                sourcefile.write(code)
+            processFile(app.config['UPLOAD_FOLDER'], sessionToken + "_upload.cpp", sessionToken)
+            response = gdbmis[sessionToken].write(f'cd {os.path.join(workdir, sessionToken)}')
+            response.extend(gdbmis[sessionToken].write(
+                f'-file-exec-and-symbols {outObjName}'
+            ))
+            response.extend(gdbmis[sessionToken].write(
+                f'skip -gfi /usr/include/c++/7/bits/*.h'))
+            response.extend(gdbmis[sessionToken].write(f'skip -gfi dyno.h'))
+            response.extend(gdbmis[sessionToken].write(f'skip -rfu ^__.*'))
+            response.extend(gdbmis[sessionToken].write(f'-break-insert main'))
+            response.extend(gdbmis[sessionToken].write(f'-exec-run'))
+            pprint(response)
+            return {'sessionToken': sessionToken, 'response': response}
+    else:
+        return redirect('static/index.html')
 
 @app.route('/file', methods=['GET', 'POST'])
 def index():
@@ -103,14 +138,23 @@ def send_command():
                                           raise_error_on_timeout=False)
     return jsonify(response)
 
+@app.route('/output')
+def get_output():
+    sessionToken = request.args.get('sessionToken')
+    with open(os.path.join(workdir, sessionToken, outputFileName), encoding='ascii') as outputFile:
+        output = outputFile.read().splitlines()
+    return {'sessionToken': sessionToken, 'output': output}
 
 @app.route('/memory')
 def get_memory():
     sessionToken = request.args.get('sessionToken')
+    memory = ""
     with open(os.path.join(workdir, sessionToken, memFileName), encoding='ascii') as memoryFile:
-        memory = json.load(memoryFile)
+        try:
+            memory = json.load(memoryFile)
+        except:
+            print("Memory file is empty?")
     return {'sessionToken': sessionToken, 'memory': memory}
-
 
 @app.route('/close', methods=['GET', 'POST'])
 def close_session():

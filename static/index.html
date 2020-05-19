@@ -19,9 +19,14 @@
 <body>
     <div class="c-card u-high">
         <div class="o-grid c-card__body">
+            <div class="o-grid__cell o-grid__cell--width-10">
+                <button id="compile" type="button" class="c-button c-button--block c-button--error u-large" >
+                    Compile & Run
+                </button>
+            </div>
             <div class="o-grid__cell o-grid__cell--width-12">
                 <div class="c-file-upload">
-                    <button class="c-button c-button--error c-button--block u-large">Upload source file</button>
+                    <button id = "file-button" class="c-button c-button--brand c-button--block u-large">Upload source file</button>
                     <input id="file" type="file" />
                 </div>
             </div>
@@ -57,7 +62,7 @@
         <p></p>
     </div>
 
-    <div class="o-grid">
+    <div class="o-grid o-grid--bottom">
         <div class="o-grid__cell o-grid__cell--width-45">
             <div class="c-card u-high">
                 <div role="separator" class="c-card__item c-card__item--divider">
@@ -74,8 +79,11 @@
                     </div>
                 </div>
                 <div class="o-panel-container" id="source-panel" style="height: 800px">
-                    <div class="o-panel u-large">
-                        <pre id="sourcecode" class="line-numbers content">
+                    <div class="o-panel u-large" id="source-card">
+                        <div id="code-editor-container" style="height: 800px; visibility: visible;">
+                            <!-- Source Editor here -->
+                        </div>
+                        <pre id="sourcecode" class="line-numbers content" style="height: 0px; visibility: hidden;">
                             <code id="source" class="language-cpp">
                                 <!-- Source here -->
                             </code>
@@ -86,15 +94,40 @@
         </div>
 
         <div class="o-grid__cell o-grid__cell--width-35">
-            <div class="c-card u-high">
-                <div role="separator" class="c-card__item c-card__item--divider">
-                    <div class="u-gradient-text u-gradient-text--info u-xlarge">
-                        Stack
+            <div class="o-grid o-grid--full">
+                <div class="o-grid__cell">
+
+                    <div class="c-card u-high">
+                        <div role="separator" class="c-card__item c-card__item--divider">
+                            <div class="u-gradient-text u-gradient-text--info u-xlarge">
+                                Stack
+                            </div>
+                        </div>
+                        <section id="stack" class="c-card__item c-card__item--pane" style="height: 441px;">
+                            <!-- Frames here -->
+                        </section>
                     </div>
                 </div>
-                <section id="stack" class="c-card__item c-card__item--pane">
-                    <!-- Frames here -->
-                </section>
+                <div class="o-grid__cell">
+                    <div class="c-card u-high">
+                        <div role="separator" class="c-card__item c-card__item--divider">
+                            <div class="u-gradient-text u-gradient-text--info u-xlarge">
+                                Output
+                            </div>
+                        </div>
+                        <section class="c-card__item c-card__item--pane">
+                            <div class="o-panel-container" id="output-panel"
+                                style="height: 300px; background-color: black;">
+                                <div class="o-panel u-large">
+                                    <section id="output" class="c-card__item"
+                                        style="color: white; font-family: monospace">
+                                        <!-- Output here -->
+                                    </section>
+                                </div>
+                            </div>
+                        </section>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -114,6 +147,7 @@
         </div>
     </div>
 
+    <script src="monaco-editor/min/vs/loader.js"></script>
     <script src="prism.js"></script>
     <script src="gdbmife.js"></script>
 </body>

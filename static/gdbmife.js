@@ -2,23 +2,48 @@ console.log("gdbmife loaded");
 
 const apiUrl = "http://localhost:5000/";
 
+// Create editor
+
+var editor;
+
+require.config({ paths: { 'vs': 'monaco-editor/min/vs' } });
+require(['vs/editor/editor.main'], function () {
+    editor = monaco.editor.create(document.getElementById('code-editor-container'), {
+        value: [
+            '#include <iostream>',
+            '#include "dyno.h"',
+            '',
+            'int main() {',
+            '\tstd::cout << "Hello world!";',
+            '}'
+        ].join('\n'),
+        language: 'cpp'
+    });
+
+});    
+
+var edit = true;
+const compileElement = document.getElementById("compile");
+const fileButtonElement = document.getElementById("file-button");
 const commandElement = document.getElementById("command");
 const fileField = document.getElementById("file");
-const sourceElement = document.getElementById("source");
 const stateElement = document.getElementById("state");
-const sourcePreElement = document.getElementById("sourcecode");
 const sourcePanelElement = document.getElementById("source-panel");
+const codeEditorContainerElement = document.getElementById("code-editor-container");
+const sourcePreElement = document.getElementById("sourcecode");
+const sourceElement = document.getElementById("source");
 const stepElement = document.getElementById("step");
 const nextElement = document.getElementById("next");
 const restartElement = document.getElementById("restart");
 const stackElement = document.getElementById("stack");
 const heapElement = document.getElementById("heap");
+const outputElement = document.getElementById("output");
 const canvas = document.getElementById("heapCanvas");
 canvas.width = heapElement.offsetWidth;
 canvas.height = 0.975 * sourcePanelElement.offsetHeight;
 var ctx = canvas.getContext("2d");
 ctx.strokeStyle = "rgb(0, 0, 0)";
-ctx.fillStyle = "rgb(200, 50, 0)";
+ctx.fillStyle = "rgb(255, 164, 56)";
 
 var sessionToken = 0;
 var lineNum = 0;
@@ -88,6 +113,13 @@ function heapDrawAlloc(allocation, heapRange) {
     console.log(`Allocation coordinates: (0, ${topLeftCoord}) - (${width}, ${topLeftCoord + height})`);
 }
 
+function updateOutput(output) {
+    outputElement.innerHTML = "";
+    for (line of output["output"]) {
+        outputElement.innerHTML += line + "<br>";
+    }
+}
+
 class TokenGenerator {
     constructor() {
         this.nextToken = 0;
@@ -115,6 +147,10 @@ const stateElementClass = "u-large c-button";
 
 function reportExecState(state, line) {
     switch (state) {
+        case "edit":
+            stateElement.innerHTML = "No program loaded";
+            stateElement.className = stateElementClass;
+            break;
         case "exited-normally":
             stateElement.innerHTML = "exited normally";
             stateElement.className = stateElementClass + " c-button--success";
@@ -307,21 +343,30 @@ function startGdb() {
 
 // Load source file
 function loadFile() {
+    let fileNameElement = document.getElementById("file-name");
+    fileNameElement.innerHTML = `${fileField.files[0].name}`;
     let file = fileField.files[0];
     var fr = new FileReader();
     fr.onload = function () {
         sourceElement.textContent = this.result;
         console.log(sourceElement.textContent);
         Prism.highlightElement(sourceElement);
+        editor.setValue(this.result);
     };
     fr.readAsText(file);
+}
+
+// Load source code from editor
+function loadCode(code) {
+    sourceElement.textContent = code;
+    Prism.highlightElement(sourceElement);
 }
 
 // Send file to debug
 const fileEndpoint = "file";
 function sendFile() {
     const formData = new FormData();
-    formData.append("sessionToken", sessionToken)
+    formData.append("sessionToken", sessionToken);
     formData.append("file", fileField.files[0]);
     fetch(apiUrl + fileEndpoint, {
         method: 'POST',
@@ -335,9 +380,52 @@ function sendFile() {
         });
 }
 
+function compileAndRun() {
+    compileElement.innerHTML = "Edit";
+    compileElement.removeEventListener("click", compileAndRun);
+    compileElement.addEventListener("click", editAction);
+    codeEditorContainerElement.style.height = "0px";
+    codeEditorContainerElement.style.visibility = "hidden";
+    sourcePreElement.style.height = "800px";
+    sourcePreElement.style.visibility = "visible";
+    sendCode();
+}
+
+const codeEndpoint = "code";
+function sendCode() {
+    const formData = new FormData();
+    formData.append("sessionToken", sessionToken);
+    code = editor.getValue();
+    loadCode(code);
+    formData.append("code", code);
+    fetch(apiUrl + codeEndpoint, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(result => {
+        console.log(result);
+        updatePanels(result["response"]);
+        enableExecButtons();
+    })
+}
+
+function editAction() {
+    compileElement.innerHTML = "Compile & Run";
+    compileElement.removeEventListener("click", editAction);
+    compileElement.addEventListener("click", compileAndRun);
+    codeEditorContainerElement.style.height = "800px";
+    codeEditorContainerElement.style.visibility = "visible";
+    document.getElementById("source-card").scroll(0, 0);
+    sourcePreElement.style.height = "0px";
+    sourcePreElement.style.visibility = "hidden";
+    disableExecButtons();
+    reportExecState("edit");
+    outputElement.innerHTML = "";
+    stackElement.innerHTML = "";
+}
+
 function loadAndSendFile() {
-    let fileNameElement = document.getElementById("file-name");
-    fileNameElement.innerHTML = `${fileField.files[0].name}`;
     loadFile();
     sendFile();
 }
@@ -360,8 +448,17 @@ function sendCommand(command) {
 
 const memoryEndpoint = "memory";
 function getMemory() {
-    console.log(`getMemory: ${sessionToken}`)
+    console.log(`getMemory: ${sessionToken}`);
     let requestUrl = apiUrl + memoryEndpoint
+        + "?sessionToken=" + sessionToken;
+    return fetch(encodeURI(requestUrl))
+        .then(response => response.json());
+}
+
+const outputEndpoint = "output";
+function getOutput() {
+    console.log(`getOutput: ${sessionToken}`);
+    let requestUrl = apiUrl + outputEndpoint
         + "?sessionToken=" + sessionToken;
     return fetch(encodeURI(requestUrl))
         .then(response => response.json());
@@ -421,10 +518,12 @@ function stepButtonAction() {
             console.log(result);
             updatePanels(result);
             getFrames();
-            getMemory();
             heap = await getMemory();
             console.log(heap.memory);
             updateHeap(heap.memory);
+            output = await getOutput();
+            console.log(output);
+            updateOutput(output);
         });
 }
 
@@ -440,12 +539,16 @@ function nextButtonAction() {
             heap = await getMemory();
             console.log(heap.memory);
             updateHeap(heap.memory);
+            output = await getOutput();
+            console.log(output);
+            updateOutput(output);
         });
 }
 
 function restartButtonAction() {
     disableExecButtons();
     reportExecState("running");
+    outputElement.innerHTML = "";
     cToken = commandTokenGenerator.generateToken();
     sendCommand(`${cToken}-exec-run`)
         .then(async (result) => {
@@ -464,8 +567,9 @@ function closeSession(event) {
     navigator.sendBeacon(requestUrl, formData);
 }
 
+compileElement.addEventListener("click", compileAndRun);
 commandElement.addEventListener("change", commandElementChange);
-fileField.addEventListener("change", loadAndSendFile);
+fileField.addEventListener("change", loadFile);
 stepElement.addEventListener("click", stepButtonAction);
 nextElement.addEventListener("click", nextButtonAction);
 restartElement.addEventListener("click", restartButtonAction);
