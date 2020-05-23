@@ -5,7 +5,7 @@ int main()
 {
     cout << "Generador de claves\n";
     cout << "-------------------\n";
-
+ 
     vector<int> clave1;
     vector<int> clave2;
     vector<int> clave3;
