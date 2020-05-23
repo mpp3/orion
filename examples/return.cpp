@@ -7,11 +7,11 @@ void mayus(string s)
         s[0] = s[0] - 32;
     }
 }
-
+ 
 int main()
 {
     string nombre {"pepe"};
-    cout << "Así no: " << nombre << "\n";
+    cout << "Mal no: " << nombre << "\n";
     mayus(nombre);
     cout << "Mejor: " << nombre << "\n";
 }

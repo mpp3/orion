@@ -15,7 +15,7 @@ void cuadro(int anchura, int altura)
         fila(anchura);
     }
 }
-
+ 
 int main()
 {
     cuadro(3, 2);

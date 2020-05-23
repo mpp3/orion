@@ -411,6 +411,7 @@ function sendCode() {
 }
 
 function editAction() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     compileElement.innerHTML = "Compile & Run";
     compileElement.removeEventListener("click", editAction);
     compileElement.addEventListener("click", compileAndRun);
@@ -546,6 +547,7 @@ function nextButtonAction() {
 }
 
 function restartButtonAction() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     disableExecButtons();
     reportExecState("running");
     outputElement.innerHTML = "";

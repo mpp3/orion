@@ -1,6 +1,6 @@
 #include "dyno.h"
 #include "ticlib.h"
-
+ 
 void print_vector(vector<int> v)
 {
     for (int i {0}; i < v.size(); ++i)
