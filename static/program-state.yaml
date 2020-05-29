@@ -1,0 +1,34 @@
+{
+    sourceCode: "#include <iostream>\nint main() { std::cout << \"Hello, World!\"}",
+    execState: "running",
+    lineNum: 1,
+    frames: [ # First frame is always the current, and the position in the sequence is the level of the frame
+        {
+            functionName: "main",
+            variables: [
+                {
+                    name: "x",
+                    type: "int",
+                    value: 0,
+                    address: 0
+                }
+            ]
+        }
+    ],
+    heap: {
+        heapRange: { 
+        # This is implicit in the collection of allocations:
+        # start = min{allocation.address for allocation in allocations}
+        # end = max{allocation.address + allocation.size for allocation in allocations}
+            start: 0,
+            end: 0
+        },
+        allocations: [
+            {
+                address: 0,
+                size: 0
+            }
+        ]
+    },
+    output: "Hello, World!"
+}

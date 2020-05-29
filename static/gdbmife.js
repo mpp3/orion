@@ -1,8 +1,263 @@
 console.log("gdbmife loaded");
 
+class ProgramState {
+    constructor(sourceCode, db) {
+        this.sourceCode = sourceCode;
+        this.execState = "stopped";
+        this.lineNum = 0;
+        this.frames = {};
+        this.heap = [];
+        this.output = "";
+    }
+
+    minMemoryAddress(allocations) {
+        let min = Infinity;
+        for (allocation of allocations) {
+            let address = parseInt(allocation.address, 16);
+            if (address < min) {
+                min = address;
+            }
+        }
+        return min;
+    }
+
+    maxMemoryAddress(allocations) {
+        let max = Infinity;
+        for (allocation of allocations) {
+            let address = parseInt(allocation.address, 16);
+            if (address > max) {
+                max = address;
+            }
+        }
+        return max;
+    }
+}
+
+/**
+ * API to a web service capable of running multiple debugger instances.
+ * Different instances are identified by a token, which is a positive integer.
+ * 
+ * Endpoints:
+ * 
+ * 'startDebugger': 
+ * Creates a new debugger instance and returns a token to identify it.
+ * Request arguments: none.
+ * Returns JSON '{"sessionToken": token}' with the token for the instance.
+ * 
+ * 'loadProgramRunAndBreakInMain':
+ * Accepts a POST request with fields 'sessionToken' and 'code' (with the source code).
+ * Runs this debugger commands:
+ * - loads the file and symbols for the source code given;
+ * - skip standard libraries and "dyno.h";
+ * - insert break point in main();
+ * - run the program.
+ * Response: {"sessionToken": token, "response": debugger process output}.
+ * 
+ * 'command':
+ * Sends a command to the debugger process.
+ * Request arguments: 'sessionToken', 'command'.
+ * Response: [debugger process output].
+ *
+ * 'output':
+ * Gets the standard output from the debugged program.
+ * Request arguments: "sessionToken".
+ * Response: {"sessionToken": token, "output": output}.
+ *  
+ * 'memory':
+ * Gets the dynamic memory allocations owned by the debugged program.
+ * Request arguments: "sessionToken".
+ * Response: {"sessionToken": token, "memory": [{"address", "size"}]}
+ * 
+ * 'close':
+ * Kills the debugger instance with given token and cleans up.
+ * Accepts a POST request with field: "sessionToken".
+ * Response: "" on success, error message on failure.
+ * 
+ */
+const webDebuggerAPI = {
+    url: "http://localhost:5000",
+    // 
+    startDebugger: "/start",
+    loadProgramRunAndBreakInMain: "/code",
+    command: "/command",
+    getOutput: "/output",
+    getMemory: "/memory",
+    killDebugger: "/close"
+};
+
+/**
+ * Represents an interface to a debugger run by a web server
+ * that implements the API 'webDebuggerAPI'
+ */
+
+/**
+ * Should this be a thin interface or should it assume some logic?
+ */
+
+class webDebugger {
+    constructor() {
+        this.commandTokenGenerator = new TokenGenerator;
+        this.sessionToken = -1;
+    }
+
+    async startDebugger(callBack) {
+        const response = await fetch(webDebuggerAPI.url + webDebuggerAPI.startDebugger);
+        const jsonResult = await response.json();
+        this.sessionToken = jsonResult.sessionToken;
+        this.programState = new ProgramState();
+        callBack.bind(this)();
+    }
+
+    updateState(commandResponse) {
+        for (let record of commandResponse) {
+            if (record.message === "stopped") {
+                if (record.payload.hasOwnProperty("frame")) {
+                    this.programState.lineNum = record.payload.frame.line;
+                }
+                if (record.payload.hasOwnProperty("reason")) {
+                    if (record.payload.reason === "exited-normally") {
+                        this.programState.execState = "exited-normally";
+                    }
+                    else if (record.payload.reason === "exited") {
+                        this.programState.execState = "exited";
+                    }
+                    else {
+                        this.programState.execState = "stopped";
+                    }
+                }
+            }
+            else if (record.message === "done" && record.hasOwnProperty("payload") && record.payload && record.payload.hasOwnProperty("bkpt")) {
+                this.programState.lineNum = record.payload.bkpt.line;
+                this.programState.execState = "stopped";
+            }
+        }
+    }
+
+    async command(command) {
+        if (command !== '') {
+            var requestUrl = webDebuggerAPI.url + webDebuggerAPI.command
+                + "?sessionToken=" + this.sessionToken
+                + "&command=" + command;
+            const response = await fetch(encodeURI(requestUrl));
+            return await response.json();
+        }
+        else {
+            return null;
+        }
+    }
+
+    async getFrames() {
+        console.log("getting frames...");
+        let cToken = commandTokenGenerator.generateToken();
+        let framesMap = {}
+        const result_1 = await this.command(`${cToken}-stack-list-frames`);
+        if (result_1[0].payload.hasOwnProperty("stack")) {
+            let frameList = result_1[0].payload.stack;
+            for (let frame of frameList) {
+                cToken = commandTokenGenerator.generateToken();
+                framesMap[cToken] = {
+                    'frameInfo': frame,
+                    'variables': []
+                };
+                let result_2 = await this.command(`${cToken}-stack-list-variables --thread 1 --frame ${frame.level} --all-values`);
+                let answer = result_2[0];
+                framesMap[answer.token].variables = answer.payload.variables;
+                let nToken = commandTokenGenerator.generateToken();
+                let newResult = await this.command(`${nToken}-stack-list-variables --thread 1 --frame ${frame.level} --simple-values`);
+                let newAnswer = newResult[0];
+                for (let i = 0; i < newAnswer.payload.variables.length; i++) {
+                    framesMap[answer.token].variables[i].type = newAnswer.payload.variables[i].type;
+                }
+            }
+        }
+        let framesList = new Array(Object.keys(framesMap).lenth);
+        if (framesList.length > 0) {
+            for (var fToken of Object.keys(framesMap)) {
+                framesList[parseInt(framesMap[fToken].frameInfo.level)] = framesMap[fToken];
+            }
+        }
+        this.programState.frames = framesList;
+        console.log(framesList);
+    }
+
+    async getMemory() {
+        console.log("getting memory...");
+        let requestUrl = webDebuggerAPI.url + webDebuggerAPI.getMemory
+            + "?sessionToken=" + this.sessionToken;
+        const response = await fetch(encodeURI(requestUrl));
+        const result = await response.json();
+        this.programState.heap = result.memory;
+    }
+
+    async getOutput() {
+        console.log("getting output...");
+        let requestUrl = webDebuggerAPI.url + webDebuggerAPI.getOutput
+            + "?sessionToken=" + this.sessionToken;
+        const response = await fetch(encodeURI(requestUrl));
+        const result = await response.json();
+        this.programState.output = result.output;
+    }
+
+    async loadProgram() { }
+
+    async loadProgramRunAndBreakInMain(code) {
+        console.log(executingAt(), "loading program...");
+        const formData = new FormData();
+        formData.append("sessionToken", this.sessionToken);
+        formData.append("code", code);
+        const response = await fetch(webDebuggerAPI.url + webDebuggerAPI.loadProgramRunAndBreakInMain, {
+            method: 'POST',
+            body: formData
+        });
+        const result = await response.json();
+        console.log(result["response"]);
+        this.updateState(result["response"]);
+        console.log("...", executingAt());
+    }
+
+    async runProgram() { }
+
+    async restartProgram() {
+        let cToken = this.commandTokenGenerator.generateToken();
+        this.command(`${cToken}-exec-run`)
+            .then(async () => {
+                let framesResult = await this.command(`-stack-list-frames`);
+                this.updateState(framesResult);
+            });
+    }
+
+    async step() {
+        console.log(executingAt(), "stepping...");
+        let cToken = this.commandTokenGenerator.generateToken();
+        this.command(`${cToken}-exec-step`)
+            .then(async (stepResponse) => {
+                await this.getFrames();
+                await this.getMemory();
+                await this.getOutput();
+                this.updateState(stepResponse);
+                console.log("...", executingAt());
+            });
+
+    }
+
+    async next() {
+        console.log(executingAt(), "nexting...");
+        let cToken = this.commandTokenGenerator.generateToken();
+        this.command(`${cToken}-exec-next`)
+            .then(async (nextResponse) => {
+                await this.getFrames();
+                await this.getMemory();
+                await this.getOutput();
+                this.updateState(nextResponse);
+                console.log("...", executingAt());
+            });
+
+    }
+
+}
+
 const apiUrl = "http://localhost:5000/";
 
-// Create editor
 
 var editor;
 
@@ -20,7 +275,7 @@ require(['vs/editor/editor.main'], function () {
         language: 'cpp'
     });
 
-});    
+});
 
 var edit = true;
 const compileElement = document.getElementById("compile");
@@ -402,12 +657,12 @@ function sendCode() {
         method: 'POST',
         body: formData
     })
-    .then(response => response.json())
-    .then(result => {
-        console.log(result);
-        updatePanels(result["response"]);
-        enableExecButtons();
-    })
+        .then(response => response.json())
+        .then(result => {
+            console.log(result);
+            updatePanels(result["response"]);
+            enableExecButtons();
+        })
 }
 
 function editAction() {
@@ -447,14 +702,14 @@ function sendCommand(command) {
     }
 }
 
-const memoryEndpoint = "memory";
-function getMemory() {
-    console.log(`getMemory: ${sessionToken}`);
-    let requestUrl = apiUrl + memoryEndpoint
-        + "?sessionToken=" + sessionToken;
-    return fetch(encodeURI(requestUrl))
-        .then(response => response.json());
-}
+// const memoryEndpoint = "memory";
+// function getMemory() {
+//     console.log(`getMemory: ${sessionToken}`);
+//     let requestUrl = apiUrl + memoryEndpoint
+//         + "?sessionToken=" + sessionToken;
+//     return fetch(encodeURI(requestUrl))
+//         .then(response => response.json());
+// }
 
 const outputEndpoint = "output";
 function getOutput() {
@@ -569,7 +824,54 @@ function closeSession(event) {
     navigator.sendBeacon(requestUrl, formData);
 }
 
-compileElement.addEventListener("click", compileAndRun);
+// Presenter
+// This "object" acts as an intermediary between the GUI an dbugger
+// For now, it manages the GUI elements directly
+// I will design an interface for the GUI elements later.
+// That interface will be a kind of state machine
+
+function compileAction() {
+    sourceElement.textContent = code;
+    Prism.highlightElement(sourceElement);
+    codeEditorContainerElement.style.height = "0px";
+    codeEditorContainerElement.style.visibility = "hidden";
+    sourcePreElement.style.height = "800px";
+    sourcePreElement.style.visibility = "visible";
+    compileElement.removeEventListener("click", compileAction);
+    dbugger.loadProgramRunAndBreakInMain(editor.getValue())
+        .then(() => {
+            console.log("Line: ", dbugger.programState.lineNum);
+            console.log("execState: ", dbugger.programState.execState);
+            compileElement.innerHTML = "Edit";
+            compileElement.addEventListener("click", editAction);
+            updatePanels(dbugger.programState);
+            enableExecButtons();
+        });
+}
+
+function nextAction() {
+
+}
+
+// Presenter ends here
+
+// Test new code
+
+startTime = performance.now();
+function executingAt() {
+    return (performance.now() - startTime) / 1000;
+}
+
+var dbugger = new webDebugger();
+
+dbugger.startDebugger(() => {
+    console.log(dbugger.sessionToken);
+    console.log("starting debugger... ", executingAt())
+    compileElement.addEventListener("click", compileAction);
+});
+
+// Test new code ends here
+
 commandElement.addEventListener("change", commandElementChange);
 fileField.addEventListener("change", loadFile);
 stepElement.addEventListener("click", stepButtonAction);
@@ -577,4 +879,5 @@ nextElement.addEventListener("click", nextButtonAction);
 restartElement.addEventListener("click", restartButtonAction);
 window.addEventListener("unload", closeSession);
 
-startGdb();
+// startGdb();
+
