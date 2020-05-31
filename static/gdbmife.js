@@ -10,9 +10,9 @@ class ProgramState {
         this.output = "";
     }
 
-    minMemoryAddress(allocations) {
+    minMemoryAddress() {
         let min = Infinity;
-        for (allocation of allocations) {
+        for (allocation of this.heap) {
             let address = parseInt(allocation.address, 16);
             if (address < min) {
                 min = address;
@@ -21,9 +21,9 @@ class ProgramState {
         return min;
     }
 
-    maxMemoryAddress(allocations) {
+    maxMemoryAddress() {
         let max = Infinity;
-        for (allocation of allocations) {
+        for (allocation of this.heap) {
             let address = parseInt(allocation.address, 16);
             if (address > max) {
                 max = address;
@@ -134,6 +134,7 @@ class webDebugger {
     }
 
     async command(command) {
+        console.log("command for sessionToken " + this.sessionToken);
         if (command !== '') {
             var requestUrl = webDebuggerAPI.url + webDebuggerAPI.command
                 + "?sessionToken=" + this.sessionToken
@@ -170,7 +171,7 @@ class webDebugger {
                 }
             }
         }
-        let framesList = new Array(Object.keys(framesMap).lenth);
+        let framesList = new Array(Object.keys(framesMap).length);
         if (framesList.length > 0) {
             for (var fToken of Object.keys(framesMap)) {
                 framesList[parseInt(framesMap[fToken].frameInfo.level)] = framesMap[fToken];
@@ -205,10 +206,12 @@ class webDebugger {
         const formData = new FormData();
         formData.append("sessionToken", this.sessionToken);
         formData.append("code", code);
-        const response = await fetch(webDebuggerAPI.url + webDebuggerAPI.loadProgramRunAndBreakInMain, {
-            method: 'POST',
-            body: formData
-        });
+        const response = await fetch(
+            webDebuggerAPI.url + webDebuggerAPI.loadProgramRunAndBreakInMain,
+            {
+                method: 'POST',
+                body: formData
+            });
         const result = await response.json();
         console.log(result["response"]);
         this.updateState(result["response"]);
@@ -219,17 +222,18 @@ class webDebugger {
 
     async restartProgram() {
         let cToken = this.commandTokenGenerator.generateToken();
-        this.command(`${cToken}-exec-run`)
+        return this.command(`${cToken}-exec-run`)
             .then(async () => {
                 let framesResult = await this.command(`-stack-list-frames`);
                 this.updateState(framesResult);
+                this.programState.output = "";
             });
     }
 
     async step() {
         console.log(executingAt(), "stepping...");
         let cToken = this.commandTokenGenerator.generateToken();
-        this.command(`${cToken}-exec-step`)
+        return this.command(`${cToken}-exec-step`)
             .then(async (stepResponse) => {
                 await this.getFrames();
                 await this.getMemory();
@@ -243,7 +247,7 @@ class webDebugger {
     async next() {
         console.log(executingAt(), "nexting...");
         let cToken = this.commandTokenGenerator.generateToken();
-        this.command(`${cToken}-exec-next`)
+        return this.command(`${cToken}-exec-next`)
             .then(async (nextResponse) => {
                 await this.getFrames();
                 await this.getMemory();
@@ -303,78 +307,6 @@ ctx.fillStyle = "rgb(255, 164, 56)";
 var sessionToken = 0;
 var lineNum = 0;
 
-const heapMargin = 0.05;
-var heap = { memory: [], sessionToken: 0 };
-var heapRange = { start: 0, end: 0 };
-const minAddressRange = 200;
-
-function heapAutoZoom() {
-    let firstAddress = minAddress();
-    let lastAddress = maxAddress();
-    let addressRange = lastAddress - firstAddress;
-    if (addressRange < minAddressRange) {
-        lastAddress = firstAddress + minAddressRange;
-    }
-    console.log("Heap length: ", heap.memory.length);
-    console.log("Heap address range: ", firstAddress, " - ", lastAddress);
-    return {
-        start: firstAddress,
-        end: lastAddress
-    };
-}
-
-function minAddress() {
-    let min = Infinity;
-    for (var i = 0; i < heap.memory.length; i++) {
-        let addressNum = parseInt(heap.memory[i].address, 16);
-        if (addressNum < min) {
-            min = addressNum;
-        }
-    }
-    return min;
-}
-
-function maxAddress() {
-    let max = -Infinity;
-    let maxPos = 0;
-    for (var i = 0; i < heap.memory.length; i++) {
-        let addressNum = parseInt(heap.memory[i].address, 16);
-        if (addressNum > max) {
-            max = addressNum;
-            maxPos = i;
-        }
-    }
-    return max + ((heap.memory.length > 0) ? heap.memory[maxPos].size : 0);
-}
-
-function updateHeap() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    let heapRange = heapAutoZoom();
-    console.log("Heap range: ", heapRange.start, " - ", heapRange.end);
-    for (var i = 0; i < heap.memory.length; i++) {
-        heapDrawAlloc(heap.memory[i], heapRange);
-    }
-}
-
-function heapDrawAlloc(allocation, heapRange) {
-    let vScale = canvas.height / (heapRange.end - heapRange.start);
-    let firstAddress = parseInt(allocation.address, 16);
-    let startOffset = firstAddress - heapRange.start;
-    let topLeftCoord = startOffset * vScale;
-    let width = canvas.width * 0.95;
-    let height = vScale * allocation.size;
-    ctx.fillRect(0, topLeftCoord, width, height * 0.95);
-    ctx.strokeRect(0, topLeftCoord, width, height);
-    console.log(`Allocation coordinates: (0, ${topLeftCoord}) - (${width}, ${topLeftCoord + height})`);
-}
-
-function updateOutput(output) {
-    outputElement.innerHTML = "";
-    for (line of output["output"]) {
-        outputElement.innerHTML += line + "<br>";
-    }
-}
-
 class TokenGenerator {
     constructor() {
         this.nextToken = 0;
@@ -386,9 +318,364 @@ class TokenGenerator {
 };
 var commandTokenGenerator = new TokenGenerator();
 
-function enableExecButtons() {
-    stepElement.removeAttribute("disabled");
-    nextElement.removeAttribute("disabled");
+// function updateSourceCode(dic) {
+//     if (dic.message === "stopped") {
+//         if (dic.payload.hasOwnProperty("frame")) {
+//             lineNum = dic.payload.frame.line;
+//         }
+//         if (dic.payload.hasOwnProperty("reason")) {
+//             if (dic.payload.reason === "exited-normally") {
+//                 reportExecState("exited-normally");
+//             }
+//             else if (dic.payload.reason === "exited") {
+//                 reportExecState("exited");
+//             }
+//             else {
+//                 reportExecState("stopped", lineNum);
+//                 dataLine = sourcePreElement.setAttribute("data-line", lineNum);
+//                 Prism.highlightElement(sourceElement);
+//                 let lnr = document.getElementsByClassName("line-numbers-rows")[0];
+//                 let targetLine = (lineNum > 5) ? lineNum - 5 : lineNum;
+//                 let atLine = lnr.children[targetLine - 1];
+//                 if (atLine) {
+//                     atLine.scrollIntoView();
+//                 }
+//             }
+//         }
+//     }
+//     if (dic.message === "done" && dic.hasOwnProperty("payload") && dic.payload && dic.payload.hasOwnProperty("bkpt")) {
+//         lineNum = dic.payload.bkpt.line;
+//         reportExecState("stopped", lineNum);
+//         dataLine = sourcePreElement.setAttribute("data-line", lineNum);
+//         Prism.highlightElement(sourceElement);
+//         let lnr = document.getElementsByClassName("line-numbers-rows")[0];
+//         let targetLine = (lineNum > 5) ? lineNum - 5 : lineNum;
+//         let atLine = lnr.children[targetLine - 1];
+//         atLine.scrollIntoView();
+//     }
+// }
+
+// function updatePanels(response) {
+//     for (dic of response) {
+//         updateSourceCode(dic);
+//     }
+// }
+
+// // Start Gdb instance and get sessionToken
+// const startEndpoint = "start"
+// function startGdb() {
+//     fetch(apiUrl + startEndpoint)
+//         .then(response => response.json())
+//         .then(result => {
+//             sessionToken = result.sessionToken;
+//             console.log("sessionToken: ", sessionToken)
+//         });
+// }
+
+// // Load source file
+// function loadFile() {
+//     let fileNameElement = document.getElementById("file-name");
+//     fileNameElement.innerHTML = `${fileField.files[0].name}`;
+//     let file = fileField.files[0];
+//     var fr = new FileReader();
+//     fr.onload = function () {
+//         sourceElement.textContent = this.result;
+//         console.log(sourceElement.textContent);
+//         Prism.highlightElement(sourceElement);
+//         editor.setValue(this.result);
+//     };
+//     fr.readAsText(file);
+// }
+
+// // Load source code from editor
+// function loadCode(code) {
+//     sourceElement.textContent = code;
+//     Prism.highlightElement(sourceElement);
+// }
+
+// Send file to debug
+// const fileEndpoint = "file";
+// function sendFile() {
+//     const formData = new FormData();
+//     formData.append("sessionToken", sessionToken);
+//     formData.append("file", fileField.files[0]);
+//     fetch(apiUrl + fileEndpoint, {
+//         method: 'POST',
+//         body: formData
+//     })
+//         .then(response => response.json())
+//         .then(result => {
+//             console.log(result);
+//             updatePanels(result["response"]);
+//             enableExecButtons();
+//         });
+// }
+
+// function compileAndRun() {
+//     compileElement.innerHTML = "Edit";
+//     compileElement.removeEventListener("click", compileAndRun);
+//     compileElement.addEventListener("click", editAction);
+//     codeEditorContainerElement.style.height = "0px";
+//     codeEditorContainerElement.style.visibility = "hidden";
+//     sourcePreElement.style.height = "800px";
+//     sourcePreElement.style.visibility = "visible";
+//     sendCode();
+// }
+
+// const codeEndpoint = "code";
+// function sendCode() {
+//     const formData = new FormData();
+//     formData.append("sessionToken", sessionToken);
+//     code = editor.getValue();
+//     loadCode(code);
+//     formData.append("code", code);
+//     fetch(apiUrl + codeEndpoint, {
+//         method: 'POST',
+//         body: formData
+//     })
+//         .then(response => response.json())
+//         .then(result => {
+//             console.log(result);
+//             updatePanels(result["response"]);
+//             enableExecButtons();
+//         })
+// }
+
+function editAction() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    compileElement.innerHTML = "Compile & Run";
+    compileElement.removeEventListener("click", editAction);
+    compileElement.addEventListener("click", compileAndRun);
+    codeEditorContainerElement.style.height = "800px";
+    codeEditorContainerElement.style.visibility = "visible";
+    document.getElementById("source-card").scroll(0, 0);
+    sourcePreElement.style.height = "0px";
+    sourcePreElement.style.visibility = "hidden";
+    disableExecButtons();
+    reportExecState("edit");
+    outputElement.innerHTML = "";
+    stackElement.innerHTML = "";
+}
+
+// function loadAndSendFile() {
+//     loadFile();
+//     sendFile();
+// }
+
+// Send command to debugger
+// const commandEndpoint = "command";
+// function sendCommand(command) {
+//     if (command !== '') {
+//         console.log("Command: ", command);
+//         var requestUrl = apiUrl + commandEndpoint
+//             + "?sessionToken=" + sessionToken
+//             + "&command=" + command;
+//         return fetch(encodeURI(requestUrl))
+//             .then(response => response.json());
+//     }
+//     else {
+//         return null;
+//     }
+// }
+
+// const memoryEndpoint = "memory";
+// function getMemory() {
+//     console.log(`getMemory: ${sessionToken}`);
+//     let requestUrl = apiUrl + memoryEndpoint
+//         + "?sessionToken=" + sessionToken;
+//     return fetch(encodeURI(requestUrl))
+//         .then(response => response.json());
+// }
+
+// const outputEndpoint = "output";
+// function getOutput() {
+//     console.log(`getOutput: ${sessionToken}`);
+//     let requestUrl = apiUrl + outputEndpoint
+//         + "?sessionToken=" + sessionToken;
+//     return fetch(encodeURI(requestUrl))
+//         .then(response => response.json());
+// }
+
+// function commandElementChange(event) {
+//     disableExecButtons();
+//     sendCommand(event.target.value)
+//         .then(result => {
+//             console.log(result);
+//             updatePanels(result);
+//             getFrames();
+//             commandElement.value = '';
+//             enableExecButtons();
+//         });
+// }
+
+
+// function getFrames() {
+//     cToken = commandTokenGenerator.generateToken();
+//     framesMap = {}
+//     sendCommand(`${cToken}-stack-list-frames`)
+//         .then(async (result) => {
+//             console.log(result);
+//             if (result[0].payload.hasOwnProperty("stack")) {
+//                 let frameList = result[0].payload.stack
+//                 for (frame of frameList) {
+//                     cToken = commandTokenGenerator.generateToken();
+//                     framesMap[cToken] = {
+//                         'frameInfo': frame,
+//                         'variables': []
+//                     };
+//                     let result = await sendCommand(`${cToken}-stack-list-variables --thread 1 --frame ${frame.level} --all-values`);
+//                     console.log(result);
+//                     let answer = result[0];
+//                     framesMap[answer.token].variables = answer.payload.variables;
+//                     let nToken = commandTokenGenerator.generateToken();
+//                     let newResult = await sendCommand(`${nToken}-stack-list-variables --thread 1 --frame ${frame.level} --simple-values`);
+//                     console.log(newResult);
+//                     let newAnswer = newResult[0];
+//                     for (let i = 0; i < newAnswer.payload.variables.length; i++) {
+//                         framesMap[answer.token].variables[i].type = newAnswer.payload.variables[i].type;
+//                     }
+//                 }
+//             }
+//             drawFrames(framesMap);
+//             enableExecButtons();
+//         });
+// }
+
+// function stepButtonAction() {
+//     disableExecButtons();
+//     reportExecState("running");
+//     cToken = commandTokenGenerator.generateToken();
+//     sendCommand(`${cToken}-exec-step`)
+//         .then(async (result) => {
+//             console.log(result);
+//             updatePanels(result);
+//             getFrames();
+//             heap = await getMemory();
+//             console.log(heap.memory);
+//             updateHeap(heap.memory);
+//             output = await getOutput();
+//             console.log(output);
+//             updateOutput(output);
+//         });
+// }
+
+// function nextButtonAction() {
+//     disableExecButtons();
+//     reportExecState("running");
+//     cToken = commandTokenGenerator.generateToken();
+//     sendCommand(`${cToken}-exec-next`)
+//         .then(async (result) => {
+//             console.log(result);
+//             updatePanels(result);
+//             getFrames();
+//             heap = await getMemory();
+//             console.log(heap.memory);
+//             updateHeap(heap.memory);
+//             output = await getOutput();
+//             console.log(output);
+//             updateOutput(output);
+//         });
+// }
+
+// function restartButtonAction() {
+//     ctx.clearRect(0, 0, canvas.width, canvas.height);
+//     disableExecButtons();
+//     reportExecState("running");
+//     outputElement.innerHTML = "";
+//     cToken = commandTokenGenerator.generateToken();
+//     sendCommand(`${cToken}-exec-run`)
+//         .then(async (result) => {
+//             console.log(result);
+//             let framesResult = await sendCommand(`-stack-list-frames`);
+//             updatePanels(framesResult);
+//             getFrames();
+//         });
+// }
+
+const closeEndpoint = "close";
+function closeSession(event) {
+    const formData = new FormData();
+    formData.append("sessionToken", sessionToken);
+    let requestUrl = apiUrl + closeEndpoint;
+    navigator.sendBeacon(requestUrl, formData);
+}
+
+// Presenter
+// This "object" acts as an intermediary between the GUI an dbugger
+// For now, it manages the GUI elements directly
+// I will design an interface for the GUI elements later.
+// That interface will be a kind of state machine
+
+function compileAction() {
+    let sourceCode = editor.getValue();
+    sourceElement.textContent = sourceCode;
+    Prism.highlightElement(sourceElement);
+    codeEditorContainerElement.style.height = "0px";
+    codeEditorContainerElement.style.visibility = "hidden";
+    sourcePreElement.style.height = "800px";
+    sourcePreElement.style.visibility = "visible";
+    compileElement.removeEventListener("click", compileAction);
+    dbugger.loadProgramRunAndBreakInMain(sourceCode)
+        .then(() => {
+            console.log("Line: ", dbugger.programState.lineNum);
+            console.log("execState: ", dbugger.programState.execState);
+            compileElement.innerHTML = "Edit";
+            compileElement.addEventListener("click", editAction);
+            updateSourceCodePanel(dbugger.programState.lineNum);
+            enableExecButtons(dbugger.programState.execState);
+        });
+}
+
+function nextAction() {
+    disableExecButtons();
+    reportExecState("running");
+    dbugger.next()
+        .then(() => {
+            updatePanels(dbugger.programState);
+            console.log("Next done.");
+            reportExecState(
+                dbugger.programState.execState,
+                dbugger.lineNum);
+            enableExecButtons(dbugger.programState.execState);
+        });
+}
+
+function stepAction() {
+    disableExecButtons();
+    reportExecState("running");
+    dbugger.step()
+        .then(() => {
+            updatePanels(dbugger.programState);
+            console.log("Step done.");
+            reportExecState(
+                dbugger.programState.execState,
+                dbugger.lineNum);
+            enableExecButtons(dbugger.programState.execState);
+        });
+}
+
+function restartAction() {
+    disableExecButtons();
+    reportExecState("running");
+    dbugger.restartProgram()
+        .then(() => {
+            updatePanels(dbugger.programState);
+            console.log("Program restarted.");
+            reportExecState("stopped");
+            enableExecButtons(dbugger.programState.execState);
+        });
+}
+
+// Presenter ends here
+
+// View
+// Functions accept as arguments the minimum information possible
+
+function enableExecButtons(state) {
+    if (state === "stopped") {
+        stepElement.removeAttribute("disabled");
+        nextElement.removeAttribute("disabled");
+    }
     restartElement.removeAttribute("disabled");
 }
 
@@ -428,40 +715,24 @@ function reportExecState(state, line) {
     }
 }
 
-function updateSourceCode(dic) {
-    if (dic.message === "stopped") {
-        if (dic.payload.hasOwnProperty("frame")) {
-            lineNum = dic.payload.frame.line;
-        }
-        if (dic.payload.hasOwnProperty("reason")) {
-            if (dic.payload.reason === "exited-normally") {
-                reportExecState("exited-normally");
-            }
-            else if (dic.payload.reason === "exited") {
-                reportExecState("exited");
-            }
-            else {
-                reportExecState("stopped", lineNum);
-                dataLine = sourcePreElement.setAttribute("data-line", lineNum);
-                Prism.highlightElement(sourceElement);
-                let lnr = document.getElementsByClassName("line-numbers-rows")[0];
-                let targetLine = (lineNum > 5) ? lineNum - 5 : lineNum;
-                let atLine = lnr.children[targetLine - 1];
-                if (atLine) {
-                    atLine.scrollIntoView();
-                }
-            }
-        }
-    }
-    if (dic.message === "done" && dic.hasOwnProperty("payload") && dic.payload && dic.payload.hasOwnProperty("bkpt")) {
-        lineNum = dic.payload.bkpt.line;
-        reportExecState("stopped", lineNum);
-        dataLine = sourcePreElement.setAttribute("data-line", lineNum);
-        Prism.highlightElement(sourceElement);
-        let lnr = document.getElementsByClassName("line-numbers-rows")[0];
-        let targetLine = (lineNum > 5) ? lineNum - 5 : lineNum;
-        let atLine = lnr.children[targetLine - 1];
-        atLine.scrollIntoView();
+function updatePanels(programState) {
+    updateSourceCodePanel(programState.lineNum);
+    drawFrames(programState.frames);
+    updateOutput(programState.output);
+    updateHeap(programState.heap,
+        programState.minMemoryAddress(),
+        programState.maxMemoryAddress());
+}
+
+function updateSourceCodePanel(currentLine) {
+    console.log("Updating source code panel with current line " + currentLine);
+    let dataLine = sourcePreElement.setAttribute("data-line", currentLine);
+    Prism.highlightElement(sourceElement);
+    let lineNumbersElement = document.getElementsByClassName("line-numbers-rows")[0];
+    let lineToScroll = (currentLine > 5) ? currentLine - 5 : currentLine;
+    let lineToScrollElement = lineNumbersElement.children[lineToScroll - 1];
+    if (lineToScrollElement) {
+        lineToScrollElement.scrollIntoView();
     }
 }
 
@@ -560,300 +831,67 @@ function frameHTML(frame, isInCurrentFrame) {
     return html;
 }
 
-function drawFrames(framesMap) {
-    framesList = new Array(Object.keys(framesMap).length);
+function drawFrames(framesList) {
+    console.log("drawing " + framesList.length + " frames.");
+    console.log(framesList[0]);
     let stackContents = "";
-    if (framesList.length > 0) {
-        for (var fToken of Object.keys(framesMap)) {
-            framesList[parseInt(framesMap[fToken].frameInfo.level)] = framesMap[fToken];
+    for (var frame of framesList) {
+        let isInCurrentFrame = frame.frameInfo.level === "0";
+        stackContents += frameHTML(frame, isInCurrentFrame);
+        for (var variable of frame.variables) {
+            stackContents += variableHTML(variable, isInCurrentFrame);
         }
-        for (var frame of framesList) {
-            let isInCurrentFrame = frame.frameInfo.level === "0";
-            stackContents += frameHTML(frame, isInCurrentFrame);
-            for (var variable of frame.variables) {
-                stackContents += variableHTML(variable, isInCurrentFrame);
-            }
-            stackContents += framePostFrame;
-        }
+        stackContents += framePostFrame;
     }
     stackElement.innerHTML = stackContents;
 }
 
-function updatePanels(response) {
-    for (dic of response) {
-        updateSourceCode(dic);
+function updateOutput(output) {
+    console.log("updating output: " + output);
+    outputElement.innerHTML = "";
+    for (line of output) {
+        outputElement.innerHTML += line + "<br>";
     }
 }
 
-// Start Gdb instance and get sessionToken
-const startEndpoint = "start"
-function startGdb() {
-    fetch(apiUrl + startEndpoint)
-        .then(response => response.json())
-        .then(result => {
-            sessionToken = result.sessionToken;
-            console.log("sessionToken: ", sessionToken)
-        });
+const heapMargin = 0.05;
+const minAddressRange = 200;
+
+function updateHeap(heap, firstAddress, lastAddress) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    let heapRange = heapAutoZoom(heap, firstAddress, lastAddress);
+    console.log("Heap range: ", heapRange.start, " - ", heapRange.end);
+    for (var i = 0; i < heap.length; i++) {
+        heapDrawAlloc(heap[i], heapRange);
+    }
 }
 
-// Load source file
-function loadFile() {
-    let fileNameElement = document.getElementById("file-name");
-    fileNameElement.innerHTML = `${fileField.files[0].name}`;
-    let file = fileField.files[0];
-    var fr = new FileReader();
-    fr.onload = function () {
-        sourceElement.textContent = this.result;
-        console.log(sourceElement.textContent);
-        Prism.highlightElement(sourceElement);
-        editor.setValue(this.result);
+function heapAutoZoom(heap, firstAddress, lastAddress) {
+    let addressRange = lastAddress - firstAddress;
+    if (addressRange < minAddressRange) {
+        lastAddress = firstAddress + minAddressRange;
+    }
+    console.log("Heap length: ", heap.length);
+    console.log("Heap address range: ", firstAddress, " - ", lastAddress);
+    return {
+        start: firstAddress,
+        end: lastAddress
     };
-    fr.readAsText(file);
 }
 
-// Load source code from editor
-function loadCode(code) {
-    sourceElement.textContent = code;
-    Prism.highlightElement(sourceElement);
+function heapDrawAlloc(allocation, heapRange) {
+    let vScale = canvas.height / (heapRange.end - heapRange.start);
+    let firstAddress = parseInt(allocation.address, 16);
+    let startOffset = firstAddress - heapRange.start;
+    let topLeftCoord = startOffset * vScale;
+    let width = canvas.width * 0.95;
+    let height = vScale * allocation.size;
+    ctx.fillRect(0, topLeftCoord, width, height * 0.95);
+    ctx.strokeRect(0, topLeftCoord, width, height);
+    console.log(`Allocation coordinates: (0, ${topLeftCoord}) - (${width}, ${topLeftCoord + height})`);
 }
 
-// Send file to debug
-const fileEndpoint = "file";
-function sendFile() {
-    const formData = new FormData();
-    formData.append("sessionToken", sessionToken);
-    formData.append("file", fileField.files[0]);
-    fetch(apiUrl + fileEndpoint, {
-        method: 'POST',
-        body: formData
-    })
-        .then(response => response.json())
-        .then(result => {
-            console.log(result);
-            updatePanels(result["response"]);
-            enableExecButtons();
-        });
-}
-
-function compileAndRun() {
-    compileElement.innerHTML = "Edit";
-    compileElement.removeEventListener("click", compileAndRun);
-    compileElement.addEventListener("click", editAction);
-    codeEditorContainerElement.style.height = "0px";
-    codeEditorContainerElement.style.visibility = "hidden";
-    sourcePreElement.style.height = "800px";
-    sourcePreElement.style.visibility = "visible";
-    sendCode();
-}
-
-const codeEndpoint = "code";
-function sendCode() {
-    const formData = new FormData();
-    formData.append("sessionToken", sessionToken);
-    code = editor.getValue();
-    loadCode(code);
-    formData.append("code", code);
-    fetch(apiUrl + codeEndpoint, {
-        method: 'POST',
-        body: formData
-    })
-        .then(response => response.json())
-        .then(result => {
-            console.log(result);
-            updatePanels(result["response"]);
-            enableExecButtons();
-        })
-}
-
-function editAction() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    compileElement.innerHTML = "Compile & Run";
-    compileElement.removeEventListener("click", editAction);
-    compileElement.addEventListener("click", compileAndRun);
-    codeEditorContainerElement.style.height = "800px";
-    codeEditorContainerElement.style.visibility = "visible";
-    document.getElementById("source-card").scroll(0, 0);
-    sourcePreElement.style.height = "0px";
-    sourcePreElement.style.visibility = "hidden";
-    disableExecButtons();
-    reportExecState("edit");
-    outputElement.innerHTML = "";
-    stackElement.innerHTML = "";
-}
-
-function loadAndSendFile() {
-    loadFile();
-    sendFile();
-}
-
-// Send command to debugger
-const commandEndpoint = "command";
-function sendCommand(command) {
-    if (command !== '') {
-        console.log("Command: ", command);
-        var requestUrl = apiUrl + commandEndpoint
-            + "?sessionToken=" + sessionToken
-            + "&command=" + command;
-        return fetch(encodeURI(requestUrl))
-            .then(response => response.json());
-    }
-    else {
-        return null;
-    }
-}
-
-// const memoryEndpoint = "memory";
-// function getMemory() {
-//     console.log(`getMemory: ${sessionToken}`);
-//     let requestUrl = apiUrl + memoryEndpoint
-//         + "?sessionToken=" + sessionToken;
-//     return fetch(encodeURI(requestUrl))
-//         .then(response => response.json());
-// }
-
-const outputEndpoint = "output";
-function getOutput() {
-    console.log(`getOutput: ${sessionToken}`);
-    let requestUrl = apiUrl + outputEndpoint
-        + "?sessionToken=" + sessionToken;
-    return fetch(encodeURI(requestUrl))
-        .then(response => response.json());
-}
-
-function commandElementChange(event) {
-    disableExecButtons();
-    sendCommand(event.target.value)
-        .then(result => {
-            console.log(result);
-            updatePanels(result);
-            getFrames();
-            commandElement.value = '';
-            enableExecButtons();
-        });
-}
-
-
-function getFrames() {
-    cToken = commandTokenGenerator.generateToken();
-    framesMap = {}
-    sendCommand(`${cToken}-stack-list-frames`)
-        .then(async (result) => {
-            console.log(result);
-            if (result[0].payload.hasOwnProperty("stack")) {
-                let frameList = result[0].payload.stack
-                for (frame of frameList) {
-                    cToken = commandTokenGenerator.generateToken();
-                    framesMap[cToken] = {
-                        'frameInfo': frame,
-                        'variables': []
-                    };
-                    let result = await sendCommand(`${cToken}-stack-list-variables --thread 1 --frame ${frame.level} --all-values`);
-                    console.log(result);
-                    let answer = result[0];
-                    framesMap[answer.token].variables = answer.payload.variables;
-                    let nToken = commandTokenGenerator.generateToken();
-                    let newResult = await sendCommand(`${nToken}-stack-list-variables --thread 1 --frame ${frame.level} --simple-values`);
-                    console.log(newResult);
-                    let newAnswer = newResult[0];
-                    for (let i = 0; i < newAnswer.payload.variables.length; i++) {
-                        framesMap[answer.token].variables[i].type = newAnswer.payload.variables[i].type;
-                    }
-                }
-            }
-            drawFrames(framesMap);
-            enableExecButtons();
-        });
-}
-
-function stepButtonAction() {
-    disableExecButtons();
-    reportExecState("running");
-    cToken = commandTokenGenerator.generateToken();
-    sendCommand(`${cToken}-exec-step`)
-        .then(async (result) => {
-            console.log(result);
-            updatePanels(result);
-            getFrames();
-            heap = await getMemory();
-            console.log(heap.memory);
-            updateHeap(heap.memory);
-            output = await getOutput();
-            console.log(output);
-            updateOutput(output);
-        });
-}
-
-function nextButtonAction() {
-    disableExecButtons();
-    reportExecState("running");
-    cToken = commandTokenGenerator.generateToken();
-    sendCommand(`${cToken}-exec-next`)
-        .then(async (result) => {
-            console.log(result);
-            updatePanels(result);
-            getFrames();
-            heap = await getMemory();
-            console.log(heap.memory);
-            updateHeap(heap.memory);
-            output = await getOutput();
-            console.log(output);
-            updateOutput(output);
-        });
-}
-
-function restartButtonAction() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    disableExecButtons();
-    reportExecState("running");
-    outputElement.innerHTML = "";
-    cToken = commandTokenGenerator.generateToken();
-    sendCommand(`${cToken}-exec-run`)
-        .then(async (result) => {
-            console.log(result);
-            let framesResult = await sendCommand(`-stack-list-frames`);
-            updatePanels(framesResult);
-            getFrames();
-        });
-}
-
-const closeEndpoint = "close";
-function closeSession(event) {
-    const formData = new FormData();
-    formData.append("sessionToken", sessionToken);
-    let requestUrl = apiUrl + closeEndpoint;
-    navigator.sendBeacon(requestUrl, formData);
-}
-
-// Presenter
-// This "object" acts as an intermediary between the GUI an dbugger
-// For now, it manages the GUI elements directly
-// I will design an interface for the GUI elements later.
-// That interface will be a kind of state machine
-
-function compileAction() {
-    sourceElement.textContent = code;
-    Prism.highlightElement(sourceElement);
-    codeEditorContainerElement.style.height = "0px";
-    codeEditorContainerElement.style.visibility = "hidden";
-    sourcePreElement.style.height = "800px";
-    sourcePreElement.style.visibility = "visible";
-    compileElement.removeEventListener("click", compileAction);
-    dbugger.loadProgramRunAndBreakInMain(editor.getValue())
-        .then(() => {
-            console.log("Line: ", dbugger.programState.lineNum);
-            console.log("execState: ", dbugger.programState.execState);
-            compileElement.innerHTML = "Edit";
-            compileElement.addEventListener("click", editAction);
-            updatePanels(dbugger.programState);
-            enableExecButtons();
-        });
-}
-
-function nextAction() {
-
-}
-
-// Presenter ends here
+// View ends here
 
 // Test new code
 
@@ -868,15 +906,18 @@ dbugger.startDebugger(() => {
     console.log(dbugger.sessionToken);
     console.log("starting debugger... ", executingAt())
     compileElement.addEventListener("click", compileAction);
+    nextElement.addEventListener("click", nextAction);
+    stepElement.addEventListener("click", stepAction);
+    restartElement.addEventListener("click", restartAction);
 });
 
 // Test new code ends here
 
-commandElement.addEventListener("change", commandElementChange);
-fileField.addEventListener("change", loadFile);
-stepElement.addEventListener("click", stepButtonAction);
-nextElement.addEventListener("click", nextButtonAction);
-restartElement.addEventListener("click", restartButtonAction);
+// commandElement.addEventListener("change", commandElementChange);
+// fileField.addEventListener("change", loadFile);
+// stepElement.addEventListener("click", stepButtonAction);
+// nextElement.addEventListener("click", nextButtonAction);
+// restartElement.addEventListener("click", restartButtonAction);
 window.addEventListener("unload", closeSession);
 
 // startGdb();
