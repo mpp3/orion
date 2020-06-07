@@ -1,3 +1,5 @@
+// Version 0.2
+
 console.log("gdbmife loaded");
 
 class ProgramState {
