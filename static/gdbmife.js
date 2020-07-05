@@ -1,5 +1,24 @@
 // Version 0.2
 
+// ProgramState
+// sourceCode: source code of the program being run
+// execState: string representing the execution state of the program; one of:
+// - stopped
+// - running
+// lineNum: next line to be executed?
+// frames: list of objects representing the frames. Every frame is an object with members:
+// - frameInfo: an object with these fields (all fields are strings):
+//   * addr: string with starting address of the frame as an hex number
+//   * file: name of the file with the source code of the function this frame belongs to
+//   * fullname: absolute path to the source file including the file name.
+//   * func: name of the function this frame belongs to.
+//   * level: level of the frame in the call stack.
+//   * line: current line being executed.
+// - variables: array in which each element is an object representing a variable with members (all members are strings):
+//   * name
+//   * value
+//   * type
+
 console.log("gdbmife loaded");
 
 class ProgramState {
