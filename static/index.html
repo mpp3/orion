@@ -20,13 +20,14 @@
     <div class="c-card u-high">
         <div class="o-grid c-card__body">
             <div class="o-grid__cell o-grid__cell--width-10">
-                <button id="compile" type="button" class="c-button c-button--block c-button--error u-large" >
+                <button id="compile" type="button" class="c-button c-button--block c-button--error u-large">
                     Compile & Run
                 </button>
             </div>
             <div class="o-grid__cell o-grid__cell--width-12">
                 <div class="c-file-upload">
-                    <button id = "file-button" class="c-button c-button--brand c-button--block u-large">Upload source file</button>
+                    <button id="file-button" class="c-button c-button--brand c-button--block u-large">Upload source
+                        file</button>
                     <input id="file" type="file" />
                 </div>
             </div>
@@ -95,16 +96,25 @@
 
         <div class="o-grid__cell o-grid__cell--width-35">
             <div class="o-grid o-grid--full">
-                <div class="o-grid__cell">
-
+                <div class="o-grid__cell o-grid__cell--width-50">
                     <div class="c-card u-high">
                         <div role="separator" class="c-card__item c-card__item--divider">
                             <div class="u-gradient-text u-gradient-text--info u-xlarge">
                                 Stack
                             </div>
                         </div>
-                        <section id="stack" class="c-card__item c-card__item--pane" style="height: 441px;">
-                            <!-- Frames here -->
+                        <section class="c-card__item c-card__item--pane" style="height: 441px;">
+                            <div class="o-grid">
+                                <div id="stack" class="o-grid__cell o-grid__cell--width-50">
+                                    <!-- Frames here -->
+
+                                </div>
+                                <div class="o-grid__cell o-grid__cell--width-50">
+                                    <canvas id="stackCanvas">
+                                        <p>Map here</p>
+                                    </canvas>
+                                </div>
+                            </div>
                         </section>
                     </div>
                 </div>
