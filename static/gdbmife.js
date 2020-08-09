@@ -1,4 +1,28 @@
-// Version 0.2
+// Version 0.3
+import { createFunFrame, createFunContainer, drawFunFrame } from "./stack.js";
+
+class Logger {
+    constructor(enabled, logFunction) {
+        this.enabled = enabled;
+        this.logFunction = logFunction;
+    }
+
+    log(text) {
+        this.logFunction(text);
+    }
+};
+
+class LoggerSet {
+    constructor(loggers) {
+        this.loggers = loggers;
+    }
+    log(texts) {
+        for (let key in texts)
+            if (texts.hasOwnProperty(key) && this.loggers.hasOwnProperty(key) && this.loggers[key].enabled) {
+                this.loggers[key].log(texts[key]);
+            }
+    }
+}
 
 // ProgramState
 // sourceCode: source code of the program being run
@@ -14,12 +38,10 @@
 //   * func: name of the function this frame belongs to.
 //   * level: level of the frame in the call stack.
 //   * line: current line being executed.
-// - variables: array in which each element is an object representing a variable with members (all members are strings):
+// - variables: list in which each element is an object representing a variable with members (all members are strings):
 //   * name
 //   * value
 //   * type
-
-console.log("gdbmife loaded");
 
 class ProgramState {
     constructor(sourceCode, db) {
@@ -27,13 +49,20 @@ class ProgramState {
         this.execState = "stopped";
         this.lineNum = 0;
         this.frames = {};
-        this.heap = [];
+        this.heap = new Array();
         this.output = "";
+    }
+
+    loadFromJSON(jsonObject) {
+        this.execState = jsonObject.execState;
+        this.lineNum = jsonObject.lineNum;
+        this.frames = jsonObject.frames;
+        this.heap = jsonObject.heap;
+        this.output = jsonObject.output;
     }
 
     minMemoryAddress() {
         let min = Infinity;
-        console.log(this.heap[0]);
         for (const allocation of this.heap) {
             let address = parseInt(allocation.address, 16);
             if (address < min) {
@@ -63,6 +92,16 @@ class ProgramState {
         }
         console.log("heap first address: " + this.minMemoryAddress());
         console.log("heap last address:" + this.maxMemoryAddress());
+    }
+
+    asText() {
+        let heapText = "";
+        for (const allocation of this.heap) {
+            heapText += allocation.address + ": " + allocation.size;
+        }
+        return "execState," + this.execState + "\n"
+            + "lineNum," + this.lineNum + "\n"
+            + "heap," + heapText + "\n";
     }
 }
 
@@ -113,9 +152,11 @@ const webDebuggerAPI = {
     startDebugger: "/start",
     loadProgramRunAndBreakInMain: "/code",
     command: "/command",
+    getVariable: "/variable",
     getOutput: "/output",
     getMemory: "/memory",
-    killDebugger: "/close"
+    killDebugger: "/close",
+    step: "/step"
 };
 
 /**
@@ -128,9 +169,10 @@ const webDebuggerAPI = {
  */
 
 class webDebugger {
-    constructor() {
+    constructor(logger) {
         this.commandTokenGenerator = new TokenGenerator;
         this.sessionToken = -1;
+        this.logger = logger;
     }
 
     async startDebugger(callBack) {
@@ -164,15 +206,19 @@ class webDebugger {
                 this.programState.execState = "stopped";
             }
         }
+        this.logger.log({ "ProgramState": this.programState.asText() });
     }
 
     async command(command) {
-        console.log("command for sessionToken " + this.sessionToken);
+        let n = Date.now();
+        let t = performance.now();
         if (command !== '') {
             var requestUrl = webDebuggerAPI.url + webDebuggerAPI.command
                 + "?sessionToken=" + this.sessionToken
                 + "&command=" + command;
             const response = await fetch(encodeURI(requestUrl));
+            let et = performance.now() - t;
+            this.logger.log({ "time": [command, n, et] });
             return await response.json();
         }
         else {
@@ -180,8 +226,22 @@ class webDebugger {
         }
     }
 
+    async getVariable(frame, variableName) {
+        let n = Date.now();
+        let t = performance.now();
+        var requestUrl = webDebuggerAPI.url + webDebuggerAPI.getVariable
+            + "?sessionToken=" + this.sessionToken
+            + "&frame=" + frame
+            + "&name=" + variableName;
+        const response = await fetch(encodeURI(requestUrl));
+        let et = performance.now() - t;
+        this.logger.log({ "time": ["getVariable " + variableName, n, et] });
+        return await response.json();
+    }
+
     async getFrames() {
-        console.log("getting frames...");
+        let n = Date.now();
+        let t = performance.now();
         let cToken = commandTokenGenerator.generateToken();
         let framesMap = {}
         const result_1 = await this.command(`${cToken}-stack-list-frames`);
@@ -201,6 +261,9 @@ class webDebugger {
                 let newAnswer = newResult[0];
                 for (let i = 0; i < newAnswer.payload.variables.length; i++) {
                     framesMap[answer.token].variables[i].type = newAnswer.payload.variables[i].type;
+                    let varResponse = await this.getVariable(frame.level, framesMap[answer.token].variables[i].name);
+                    framesMap[answer.token].variables[i].address = varResponse.address[0].payload.value;
+                    framesMap[answer.token].variables[i].size = varResponse.size[0].payload.value;
                 }
             }
         }
@@ -211,35 +274,38 @@ class webDebugger {
             }
         }
         this.programState.frames = framesList;
-        console.log(framesList);
+        let et = performance.now() - t;
+        this.logger.log({ "time": ["getFrames", n, et] });
     }
 
     async getMemory() {
-        console.log("getting memory...");
+        let n = Date.now();
+        let t = performance.now();
         let requestUrl = webDebuggerAPI.url + webDebuggerAPI.getMemory
             + "?sessionToken=" + this.sessionToken;
         const response = await fetch(encodeURI(requestUrl));
-        console.log(response);
         const result = await response.json();
         this.programState.heap = result.memory;
-        console.log(result);
-        console.log(this.programState.heap[0]);
+        let et = performance.now() - t;
+        this.logger.log({ "time": ["getMemory", n, et] });
         return result;
     }
 
     async getOutput() {
-        console.log("getting output...");
+        let n = Date.now();
+        let t = performance.now();
         let requestUrl = webDebuggerAPI.url + webDebuggerAPI.getOutput
             + "?sessionToken=" + this.sessionToken;
         const response = await fetch(encodeURI(requestUrl));
         const result = await response.json();
         this.programState.output = result.output;
+        let et = performance.now() - t;
+        this.logger.log({ "time": ["getOutput", n, et] });
     }
 
     async loadProgram() { }
 
     async loadProgramRunAndBreakInMain(code) {
-        console.log(executingAt(), "loading program...");
         const formData = new FormData();
         formData.append("sessionToken", this.sessionToken);
         formData.append("code", code);
@@ -250,9 +316,7 @@ class webDebugger {
                 body: formData
             });
         const result = await response.json();
-        console.log(result["response"]);
         this.updateState(result["response"]);
-        console.log("...", executingAt());
     }
 
     async runProgram() { }
@@ -261,34 +325,29 @@ class webDebugger {
         let cToken = this.commandTokenGenerator.generateToken();
         return this.command(`${cToken}-exec-run`)
             .then(async (response) => {
-                console.log(response);
                 this.updateState(response);
                 let framesResult = await this.command(`-stack-list-frames`);
-                console.log(framesResult);
                 this.updateState(framesResult);
                 this.programState.output = "";
-                this.programState.print();
             });
     }
 
     async step() {
-        console.log("step launched at: ", executingAt());
-        let cToken = this.commandTokenGenerator.generateToken();
-        return this.command(`${cToken}-exec-step`)
-            .then(async (stepResponse) => {
-                await this.getFrames();
-                await this.getMemory();
-                await this.getOutput();
-                this.updateState(stepResponse);
-                console.log(this.programState.heap[0]);
-                this.programState.print();
-                console.log("step finished at: ", executingAt());
-            });
-
+        let n = Date.now();
+        let t = performance.now();
+        let requestUrl = webDebuggerAPI.url + webDebuggerAPI.step
+            + "?sessionToken=" + this.sessionToken;
+        const response = await fetch(encodeURI(requestUrl))
+        const result = await response.json();
+        this.programState.loadFromJSON(result.programState);
+        let et = performance.now() - t;
+        this.logger.log({ "time": ["step", n, et] });
+        return result;
     }
 
     async next() {
-        console.log(executingAt(), "nexting...");
+        let n = Date.now();
+        let t = performance.now();
         let cToken = this.commandTokenGenerator.generateToken();
         return this.command(`${cToken}-exec-next`)
             .then(async (nextResponse) => {
@@ -296,7 +355,8 @@ class webDebugger {
                 await this.getMemory();
                 await this.getOutput();
                 this.updateState(nextResponse);
-                console.log("...", executingAt());
+                let et = performance.now() - t;
+                this.logger.log({ "time": ["next", n, et] });
             });
 
     }
@@ -353,6 +413,31 @@ canvas.height = 0.975 * sourcePanelElement.offsetHeight;
 var ctx = canvas.getContext("2d");
 ctx.strokeStyle = "rgb(0, 0, 0)";
 ctx.fillStyle = "rgb(255, 164, 56)";
+const stackConf = {
+    pixelsPerByte: 4,
+    varLabelHeight: 30,
+    varLabelSep: 5,
+    topMargin: 10,
+    leftMargin: 0.015,
+    frameHMargin: 0.01,
+    frameVMargin: 5,
+    frameHeaderHeight: 30,
+    funFrameBoxWidth: 0.65,
+    stackFrameBoxWidth: 0.23,
+    funStackFramesSep: 0.07,
+    funStackFramesVSep: 20,
+    canvasBackgroundColor: "#f9f9f9",
+    frameTitleBackgroundColor: "4267ff",
+    frameBorderColor: "4267ff",
+    varNameBackgroundColor: ["#ff5000", "#ff7000", "#ff9000", "#ffb000", "#ffd000"]
+};
+
+const stackFrame = createFunFrame(stackConf.canvasBackgroundColor);
+var stackContainer = null;
+stackFrame.on("ready", () => {
+    stackContainer = createFunContainer(stackFrame.stage);
+    stackFrame.stage.update();
+})
 
 var sessionToken = 0;
 
@@ -384,11 +469,15 @@ function compileAction() {
     compileElement.removeEventListener("click", compileAction);
     dbugger.loadProgramRunAndBreakInMain(sourceCode)
         .then(() => {
-            console.log("Line: ", dbugger.programState.lineNum);
-            console.log("execState: ", dbugger.programState.execState);
             compileElement.innerHTML = "Edit";
+            disableUploadButton();
             compileElement.addEventListener("click", editAction);
-            updateSourceCodePanel(dbugger.programState.lineNum);
+            // updateSourceCodePanel(dbugger.programState.lineNum);
+            updatePanels(dbugger.programState);
+            reportExecState(
+                dbugger.programState.execState,
+                dbugger.line
+            );
             enableExecButtons(dbugger.programState.execState);
         });
 }
@@ -410,7 +499,6 @@ function nextAction() {
     dbugger.next()
         .then(() => {
             updatePanels(dbugger.programState);
-            console.log("Next done.");
             reportExecState(
                 dbugger.programState.execState,
                 dbugger.lineNum);
@@ -424,7 +512,6 @@ function stepAction() {
     dbugger.step()
         .then(() => {
             updatePanels(dbugger.programState);
-            console.log("Step done.");
             reportExecState(
                 dbugger.programState.execState,
                 dbugger.lineNum);
@@ -438,7 +525,6 @@ function restartAction() {
     dbugger.restartProgram()
         .then(() => {
             updatePanels(dbugger.programState);
-            console.log("Program restarted.");
             reportExecState("stopped");
             enableExecButtons(dbugger.programState.execState);
         });
@@ -454,10 +540,11 @@ function editAction() {
     document.getElementById("source-card").scroll(0, 0);
     sourcePreElement.style.height = "0px";
     sourcePreElement.style.visibility = "hidden";
+    updatePanels(dbugger.programState);
     disableExecButtons();
+    enableUploadButton();
     reportExecState("edit");
     outputElement.innerHTML = "";
-    stackElement.innerHTML = "";
 }
 
 function closeSessionAction(event) {
@@ -468,6 +555,16 @@ function closeSessionAction(event) {
 
 // View
 // Functions accept as arguments the minimum information possible
+
+function enableUploadButton() {
+    fileButtonElement.removeAttribute("disabled");
+    fileField.removeAttribute("disabled");
+}
+
+function disableUploadButton() {
+    fileButtonElement.setAttribute("disabled", "");
+    fileField.setAttribute("disabled", "");
+}
 
 function enableExecButtons(state) {
     if (state === "stopped") {
@@ -515,7 +612,7 @@ function reportExecState(state, line) {
 
 function updatePanels(programState) {
     updateSourceCodePanel(programState.lineNum);
-    drawFrames(programState.frames);
+    updateStack(programState.frames);
     updateOutput(programState.output);
     updateHeap(programState.heap,
         programState.minMemoryAddress(),
@@ -523,7 +620,6 @@ function updatePanels(programState) {
 }
 
 function updateSourceCodePanel(currentLine) {
-    console.log("Updating source code panel with current line " + currentLine);
     let dataLine = sourcePreElement.setAttribute("data-line", currentLine);
     Prism.highlightElement(sourceElement);
     let lineNumbersElement = document.getElementsByClassName("line-numbers-rows")[0];
@@ -534,122 +630,52 @@ function updateSourceCodePanel(currentLine) {
     }
 }
 
-const framePreVariable = `
-                <tr class="c-table__row">`;
-const framePostVariable = `
-                </tr>`;
-const framePostFrame = `
-            </tbody>
-        </table>
-    </section>
-</div>`;
-
-function variableNameStyle(isInCurrentFrame) {
-    let html = "u-text--mono u-large";
-    html += (isInCurrentFrame) ? " u-text--loud" : " u-text--quiet";
-    return html;
-}
-
-function variableValueStyle(isInCurrentFrame) {
-    let html = "u-text--mono u-large";
-    html += (isInCurrentFrame) ? "" : " u-text--quiet";
-    return html;
-}
-
-function variableTypeStyle(isInCurrentFrame) {
-    let html = "u-text--mono";
-    html += (isInCurrentFrame) ? "" : " u-text--quiet";
-    return html;
-}
-
-function variableHTML(variable, isInCurrentFrame) {
-    let html = framePreVariable;
-    html += `
-    <td class="c-table__cell" style="width: 20%">
-        <span class="${variableNameStyle(isInCurrentFrame)}">
-            ${variable.name}
-        </span>
-    </td>`;
-    html += `
-    <td class="c-table__cell" width="50%">
-        <span class="${variableValueStyle(isInCurrentFrame)}">
-            ${variable.value}
-        </span>
-    </td>`;
-    html += `
-    <td class="c-table__cell" width="30%">
-        <span class="${variableTypeStyle(isInCurrentFrame)}">
-            ${variable.type}
-        </span>
-    </td>`;
-    html += framePostVariable;
-    return html;
-}
-
-function framePreHeading(isInCurrentFrame) {
-    return `
-    <div class="c-card">
-        <div role="separator" class="c-card__item
-        ${isInCurrentFrame ? " c-card__item--brand" : " c-card__item--divider"}">`;
-}
-
-function framePostHeading(isInCurrentFrame) {
-    return `
-    </div>
-    <section class="c-card__item
-    ${isInCurrentFrame ? " c-card__item--warning" : ""}">
-        <table class="c-table">
-            <tbody class="c-table__body">`;
-}
-
-function frameFunctionNameStyle(isInCurrentFrame) {
-    let html = "u-text--mono u-xlarge";
-    html += (isInCurrentFrame) ? " u-text--loud" : " u-text--quiet";
-    return html;
-}
-
-function framePCStyle(isInCurrentFrame) {
-    let html = "c-badge c-badge--rounded u-large";
-    html += (isInCurrentFrame) ? " c-badge--warning" : " c-badge--ghost";
-    return html;
-}
-
-function frameHTML(frame, isInCurrentFrame) {
-    let html = "";
-    html += framePreHeading(isInCurrentFrame);
-    html += `
-        <span class="${framePCStyle(isInCurrentFrame)}">
-            ${frame.frameInfo.line}
-        </span>
-        <span class="${frameFunctionNameStyle(isInCurrentFrame)}">
-            ${frame.frameInfo.func}
-        </span>
-        `;
-    html += framePostHeading(isInCurrentFrame);
-    return html;
-}
-
-function drawFrames(framesList) {
-    console.log("drawing " + framesList.length + " frames.");
-    console.log(framesList[0]);
-    let stackContents = "";
-    for (var frame of framesList) {
-        let isInCurrentFrame = frame.frameInfo.level === "0";
-        stackContents += frameHTML(frame, isInCurrentFrame);
-        for (var variable of frame.variables) {
-            stackContents += variableHTML(variable, isInCurrentFrame);
+function updateStack(framesList) {
+    stackContainer.removeAllChildren();
+    let topAddress = lowAddress(framesList).address;
+    if (framesList.length > 0) {
+        let vpos = 0;
+        for (var frame of framesList) {
+            let isInCurrentFrame = frame.frameInfo.level === "0";
+            vpos = drawFunFrame(stackContainer, stackFrame.width, vpos, topAddress, frame, stackConf);
         }
-        stackContents += framePostFrame;
     }
-    stackElement.innerHTML = stackContents;
+    stackFrame.update();
 }
 
 function updateOutput(output) {
-    console.log("updating output: " + output);
     outputElement.innerHTML = "";
-    for (line of output) {
+    for (let line of output) {
         outputElement.innerHTML += line + "<br>";
     }
+}
+
+function lowAddress(frames) {
+    let bottomAddress = Infinity;
+    let bottomvar = 'none';
+    let bottomsize = 0;
+    if (frames.length > 0) {
+        for (var frame of frames) {
+            for (var variable of frame.variables) {
+                let address = parseInt(variable.address, 16);
+                if (address < bottomAddress) {
+                    bottomAddress = address;
+                    bottomvar = variable.name;
+                    bottomsize = parseInt(variable.size);
+                }
+            }
+        }
+    }
+    let bottom = { 'address': bottomAddress, 'size': bottomsize }
+    return bottom;
+}
+
+function randomInt(from, to) {
+    return Math.floor(Math.random() * (to - from) + from);
+}
+
+function randomColor() {
+    return `rgb(${randomInt(0, 255)}, ${randomInt(0, 255)}, ${randomInt(0, 255)})`;
 }
 
 const heapMargin = 0.05;
@@ -658,7 +684,6 @@ const minAddressRange = 200;
 function updateHeap(heap, firstAddress, lastAddress) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     let heapRange = heapAutoZoom(heap, firstAddress, lastAddress);
-    console.log("Heap range: ", heapRange.start, " - ", heapRange.end);
     for (var i = 0; i < heap.length; i++) {
         heapDrawAlloc(heap[i], heapRange);
     }
@@ -669,8 +694,6 @@ function heapAutoZoom(heap, firstAddress, lastAddress) {
     if (addressRange < minAddressRange) {
         lastAddress = firstAddress + minAddressRange;
     }
-    console.log("Heap length: ", heap.length);
-    console.log("Heap address range: ", firstAddress, " - ", lastAddress);
     return {
         start: firstAddress,
         end: lastAddress
@@ -686,23 +709,27 @@ function heapDrawAlloc(allocation, heapRange) {
     let height = vScale * allocation.size;
     ctx.fillRect(0, topLeftCoord, width, height * 0.95);
     ctx.strokeRect(0, topLeftCoord, width, height);
-    console.log(`Allocation coordinates: (0, ${topLeftCoord}) - (${width}, ${topLeftCoord + height})`);
 }
 
-// View ends here
-
-// Test new code
-
-startTime = performance.now();
+var startTime = performance.now();
 function executingAt() {
     return (performance.now() - startTime) / 1000;
 }
+function elapsedTime(from) {
+    return performance.now() - from;
+}
 
-var dbugger = new webDebugger();
+var logger = new LoggerSet({
+    "ProgramState": new Logger(false, text => console.log("ProgramState," + text)),
+    "command": new Logger(false, text => console.log("command" + text)),
+    "time": new Logger(true, text => {
+        console.log(`${text[0]},${text[1]},${text[2]}`);
+    })
+});
+
+var dbugger = new webDebugger(logger);
 
 dbugger.startDebugger(() => {
-    console.log(dbugger.sessionToken);
-    console.log("starting debugger... ", executingAt())
     compileElement.addEventListener("click", compileAction);
     fileField.addEventListener("change", loadFile);
     nextElement.addEventListener("click", nextAction);
@@ -710,5 +737,3 @@ dbugger.startDebugger(() => {
     restartElement.addEventListener("click", restartAction);
     window.addEventListener("beforeunload", closeSessionAction);
 });
-
-// Test new code ends here
