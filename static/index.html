@@ -18,6 +18,7 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.8.0/css/bulma.min.css"> -->
     <script defer src="https://use.fontawesome.com/releases/v5.3.1/js/all.js"></script>
     <link rel="stylesheet" href="themes/styles.css">
+    <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
 </head>
 
 <body>
@@ -98,7 +99,7 @@
             </div>
         </div>
 
-        <div class="o-grid__cell o-grid__cell--width-35">
+        <div class="o-grid__cell o-grid__cell--width-40">
             <div class="o-grid o-grid--full">
                 <div class="o-grid__cell o-grid__cell--width-50">
                     <div class="c-card u-high">
@@ -107,17 +108,9 @@
                                 Stack
                             </div>
                         </div>
-                        <section class="c-card__item c-card__item--pane" style="height: 441px;">
-                            <div class="o-grid">
-                                <div id="stack" class="o-grid__cell o-grid__cell--width-50">
-                                    <!-- Frames here -->
-
-                                </div>
-                                <div id="stackMap" class="o-grid__cell o-grid__cell--width-50">
-                                    <canvas id="stackCanvas">
-                                        <p>Map here</p>
-                                    </canvas>
-                                </div>
+                        <section id="stack" class="c-card__item c-card__item--pane" style="height: 541px;">
+                            <div id="holder">
+                                <!-- Stack Canvas-->
                             </div>
                         </section>
                     </div>
@@ -131,7 +124,7 @@
                         </div>
                         <section class="c-card__item c-card__item--pane">
                             <div class="o-panel-container" id="output-panel"
-                                style="height: 300px; background-color: black;">
+                                style="height: 200px; background-color: black;">
                                 <div class="o-panel u-large">
                                     <section id="output" class="c-card__item"
                                         style="color: white; font-family: monospace">
@@ -145,7 +138,7 @@
             </div>
         </div>
 
-        <div class="o-grid__cell o-grid__cell--width-20">
+        <div class="o-grid__cell o-grid__cell--width-15">
             <div class="c-card u-high">
                 <div role="separator" class="c-card__item c-card__item--divider">
                     <div class="u-gradient-text u-gradient-text--info u-xlarge">
@@ -161,9 +154,10 @@
         </div>
     </div>
 
+    <script type="module" src="./stack.js"></script>
     <script src="monaco-editor/min/vs/loader.js"></script>
     <script src="prism.js"></script>
-    <script src="gdbmife.js"></script>
+    <script type="module" src="gdbmife.js"></script>
 </body>
 
 

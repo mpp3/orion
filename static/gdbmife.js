@@ -1,4 +1,5 @@
 // Version 0.2
+import { createFunFrame, createFunContainer, drawFunFrame } from "./stack.js";
 
 class Logger {
     constructor(enabled, logFunction) {
@@ -331,22 +332,6 @@ class webDebugger {
             });
     }
 
-    // async step() {
-    //     let n = Date.now();
-    //     let t = performance.now();
-    //     let cToken = this.commandTokenGenerator.generateToken();
-    //     return this.command(`${cToken}-exec-step`)
-    //         .then(async (stepResponse) => {
-    //             await this.getFrames();
-    //             await this.getMemory();
-    //             await this.getOutput();
-    //             this.updateState(stepResponse);
-    //             let et = performance.now() - t;
-    //             this.logger.log({"time": ["step", n, et]});
-    //         });
-
-    // }
-
     async step() {
         let n = Date.now();
         let t = performance.now();
@@ -428,12 +413,31 @@ canvas.height = 0.975 * sourcePanelElement.offsetHeight;
 var ctx = canvas.getContext("2d");
 ctx.strokeStyle = "rgb(0, 0, 0)";
 ctx.fillStyle = "rgb(255, 164, 56)";
-const stackCanvas = document.getElementById("stackCanvas");
-const stackMap = document.getElementById("stackMap");
-stackCanvas.width = stackMap.offsetWidth;
-var stackContext = stackCanvas.getContext("2d");
-stackContext.strokeStyle = "rgb(0, 0, 0)";
-stackContext.fillStyle = "rgb(255, 164, 56)";
+const stackConf = {
+    pixelsPerByte: 4,
+    varLabelHeight: 30,
+    varLabelSep: 5,
+    topMargin: 10,
+    leftMargin: 0.015,
+    frameHMargin: 0.01,
+    frameVMargin: 5,
+    frameHeaderHeight: 30,
+    funFrameBoxWidth: 0.65,
+    stackFrameBoxWidth: 0.23,
+    funStackFramesSep: 0.07,
+    funStackFramesVSep: 20,
+    canvasBackgroundColor: "#f9f9f9",
+    frameTitleBackgroundColor: "4267ff",
+    frameBorderColor: "4267ff",
+    varNameBackgroundColor: ["#ff5000", "#ff7000", "#ff9000", "#ffb000", "#ffd000"]
+};
+
+const stackFrame = createFunFrame(stackConf.canvasBackgroundColor);
+var stackContainer = null;
+stackFrame.on("ready", () => {
+    stackContainer = createFunContainer(stackFrame.stage);
+    stackFrame.stage.update();
+})
 
 var sessionToken = 0;
 
@@ -466,8 +470,14 @@ function compileAction() {
     dbugger.loadProgramRunAndBreakInMain(sourceCode)
         .then(() => {
             compileElement.innerHTML = "Edit";
+            disableUploadButton();
             compileElement.addEventListener("click", editAction);
-            updateSourceCodePanel(dbugger.programState.lineNum);
+            // updateSourceCodePanel(dbugger.programState.lineNum);
+            updatePanels(dbugger.programState);
+            reportExecState(
+                dbugger.programState.execState,
+                dbugger.line
+            );
             enableExecButtons(dbugger.programState.execState);
         });
 }
@@ -530,10 +540,11 @@ function editAction() {
     document.getElementById("source-card").scroll(0, 0);
     sourcePreElement.style.height = "0px";
     sourcePreElement.style.visibility = "hidden";
+    updatePanels(dbugger.programState);
     disableExecButtons();
+    enableUploadButton();
     reportExecState("edit");
     outputElement.innerHTML = "";
-    stackElement.innerHTML = "";
 }
 
 function closeSessionAction(event) {
@@ -545,14 +556,14 @@ function closeSessionAction(event) {
 // View
 // Functions accept as arguments the minimum information possible
 
-function hexAddressToColor(hexAddress) {
-    let lastDigit = hexAddress[hexAddress.length - 1];
-    let beforeLastDigit = hexAddress[hexAddress.length - 2];
-    let beforeBeforeLastDigit = hexAddress[hexAddress.length - 3];
-    let red = parseInt(lastDigit, 16) * 16;
-    let green = parseInt(beforeLastDigit, 16) * 16;
-    let blue = parseInt(beforeBeforeLastDigit, 16) * 16;
-    return `rgb(${red},${green},${blue})`;
+function enableUploadButton() {
+    fileButtonElement.removeAttribute("disabled");
+    fileField.removeAttribute("disabled");
+}
+
+function disableUploadButton() {
+    fileButtonElement.setAttribute("disabled", "");
+    fileField.setAttribute("disabled", "");
 }
 
 function enableExecButtons(state) {
@@ -601,8 +612,7 @@ function reportExecState(state, line) {
 
 function updatePanels(programState) {
     updateSourceCodePanel(programState.lineNum);
-    drawFrames(programState.frames);
-    drawStack(programState.frames, stackContext, stackCanvas, 2);
+    updateStack(programState.frames);
     updateOutput(programState.output);
     updateHeap(programState.heap,
         programState.minMemoryAddress(),
@@ -620,151 +630,44 @@ function updateSourceCodePanel(currentLine) {
     }
 }
 
-const framePreVariable = `
-                <tr class="c-table__row">`;
-const framePostVariable = `
-                </tr>`;
-const framePostFrame = `
-            </tbody>
-        </table>
-    </section>
-</div>`;
-
-function variableNameStyle(isInCurrentFrame) {
-    let html = "u-text--mono u-large";
-    html += (isInCurrentFrame) ? " u-text--loud" : " u-text--quiet";
-    return html;
-}
-
-function variableValueStyle(isInCurrentFrame) {
-    let html = "u-text--mono u-large";
-    html += (isInCurrentFrame) ? "" : " u-text--quiet";
-    return html;
-}
-
-function variableTypeStyle(isInCurrentFrame) {
-    let html = "u-text--mono";
-    html += (isInCurrentFrame) ? "" : " u-text--quiet";
-    return html;
-}
-
-function variableHTML(variable, isInCurrentFrame) {
-    let html = framePreVariable;
-    html += `
-    <td class="c-table__cell" style="width: 20%">
-        <span class="${variableNameStyle(isInCurrentFrame)}">
-            ${variable.name}
-        </span>
-    </td>`;
-    html += `
-    <td class="c-table__cell" width="50%">
-        <span class="${variableValueStyle(isInCurrentFrame)}">
-            ${variable.value}
-        </span>
-    </td>`;
-    html += `
-    <td class="c-table__cell" width="30%">
-        <span class="${variableTypeStyle(isInCurrentFrame)}">
-            ${variable.type}
-        </span>
-    </td>`;
-    html += framePostVariable;
-    return html;
-}
-
-function framePreHeading(isInCurrentFrame) {
-    return `
-    <div class="c-card">
-        <div role="separator" class="c-card__item
-        ${isInCurrentFrame ? " c-card__item--brand" : " c-card__item--divider"}">`;
-}
-
-function framePostHeading(isInCurrentFrame) {
-    return `
-    </div>
-    <section class="c-card__item
-    ${isInCurrentFrame ? " c-card__item--warning" : ""}">
-        <table class="c-table">
-            <tbody class="c-table__body">`;
-}
-
-function frameFunctionNameStyle(isInCurrentFrame) {
-    let html = "u-text--mono u-xlarge";
-    html += (isInCurrentFrame) ? " u-text--loud" : " u-text--quiet";
-    return html;
-}
-
-function framePCStyle(isInCurrentFrame) {
-    let html = "c-badge c-badge--rounded u-large";
-    html += (isInCurrentFrame) ? " c-badge--warning" : " c-badge--ghost";
-    return html;
-}
-
-function frameHTML(frame, isInCurrentFrame) {
-    let html = "";
-    html += framePreHeading(isInCurrentFrame);
-    html += `
-        <span class="${framePCStyle(isInCurrentFrame)}">
-            ${frame.frameInfo.line}
-        </span>
-        <span class="${frameFunctionNameStyle(isInCurrentFrame)}">
-            ${frame.frameInfo.func}
-        </span>
-        `;
-    html += framePostHeading(isInCurrentFrame);
-    return html;
-}
-
-function drawFrames(framesList) {
-    let stackContents = "";
-    for (var frame of framesList) {
-        let isInCurrentFrame = frame.frameInfo.level === "0";
-        stackContents += frameHTML(frame, isInCurrentFrame);
-        for (var variable of frame.variables) {
-            stackContents += variableHTML(variable, isInCurrentFrame);
+function updateStack(framesList) {
+    stackContainer.removeAllChildren();
+    let topAddress = lowAddress(framesList).address;
+    if (framesList.length > 0) {
+        let vpos = 0;
+        for (var frame of framesList) {
+            let isInCurrentFrame = frame.frameInfo.level === "0";
+            vpos = drawFunFrame(stackContainer, stackFrame.width, vpos, topAddress, frame, stackConf);
         }
-        stackContents += framePostFrame;
     }
-    stackElement.innerHTML = stackContents;
+    stackFrame.update();
 }
 
 function updateOutput(output) {
     outputElement.innerHTML = "";
-    for (line of output) {
+    for (let line of output) {
         outputElement.innerHTML += line + "<br>";
     }
 }
 
-function drawStack(frames, targetContext, targetCanvas, pixelsPerByte) {
-    targetContext.clearRect(0, 0, targetCanvas.width, targetCanvas.height);
-    let top = highAddress(frames);
-    for (var frame of frames) {
-        drawFrame(frame, targetContext, pixelsPerByte, targetCanvas.width, top);
-    }
-}
-
-function highAddress(frames) {
-    let topaddress = 0;
-    let topvar = 'none';
-    let topsize = 0;
-    for (var frame of frames) {
-        for (var variable of frame.variables) {
-            let address = parseInt(variable.address, 16);
-            if (address > topaddress) {
-                topaddress = address;
-                topvar = variable.name;
-                topsize = parseInt(variable.size);
+function lowAddress(frames) {
+    let bottomAddress = Infinity;
+    let bottomvar = 'none';
+    let bottomsize = 0;
+    if (frames.length > 0) {
+        for (var frame of frames) {
+            for (var variable of frame.variables) {
+                let address = parseInt(variable.address, 16);
+                if (address < bottomAddress) {
+                    bottomAddress = address;
+                    bottomvar = variable.name;
+                    bottomsize = parseInt(variable.size);
+                }
             }
         }
     }
-    let top = { 'address': topaddress, 'size': topsize }
-    return top;
-}
-
-function drawFrame(frame, targetContext, pixelsPerByte, width, top) {
-    for (var variable of frame.variables) {
-        drawVariable(variable, targetContext, pixelsPerByte, width, top);
-    }
+    let bottom = { 'address': bottomAddress, 'size': bottomsize }
+    return bottom;
 }
 
 function randomInt(from, to) {
@@ -773,14 +676,6 @@ function randomInt(from, to) {
 
 function randomColor() {
     return `rgb(${randomInt(0, 255)}, ${randomInt(0, 255)}, ${randomInt(0, 255)})`;
-}
-
-function drawVariable(variable, targetContext, pixelsPerByte, width, top) {
-    let height = pixelsPerByte * variable.size;
-    let topCoord = pixelsPerByte * (top.size + top.address - parseInt(variable.address, 16) - parseInt(variable.size));
-    stackContext.fillStyle = hexAddressToColor(variable.address);
-    targetContext.fillRect(0, topCoord, width, height);
-    targetContext.strokeRect(0, topCoord, width, height);
 }
 
 const heapMargin = 0.05;
@@ -816,11 +711,7 @@ function heapDrawAlloc(allocation, heapRange) {
     ctx.strokeRect(0, topLeftCoord, width, height);
 }
 
-// View ends here
-
-// Test new code
-
-startTime = performance.now();
+var startTime = performance.now();
 function executingAt() {
     return (performance.now() - startTime) / 1000;
 }
@@ -846,5 +737,3 @@ dbugger.startDebugger(() => {
     restartElement.addEventListener("click", restartAction);
     window.addEventListener("beforeunload", closeSessionAction);
 });
-
-// Test new code ends here
