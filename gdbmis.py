@@ -1,4 +1,4 @@
-# Version 0.2
+# Version 0.3.1
 
 import time
 
@@ -310,16 +310,17 @@ def updateFrames(token):
     slResponse = command('-stack-list-frames', token)
     if 'stack' in slResponse[0]['payload']:
         flResponse = slResponse[0]['payload']['stack']
-        pprint(flResponse)
         for frame in flResponse:
             level = frame['level']
-            framesMap[level] = {'frameInfo': frame, 'variables': dict()}
+            framesMap[level] = {'frameInfo': frame, 'variables': []}
             
             vlResponse = command(f'-stack-list-variables --thread 1 --frame {level} --all-values', token)
             framesMap[level]['variables'] = vlResponse[0]['payload']['variables']
             vl2Response = command(f'-stack-list-variables --thread 1 --frame {level} --simple-values', token)
-            for var in vl2Response[0]['payload']['variables']:
-                index = getVarPos(var['name'], framesMap[frame['level']]['variables'])
+            pprint(vl2Response)
+            for index in range(len(vl2Response[0]['payload']['variables'])):
+                print(index)
+                var = vl2Response[0]['payload']['variables'][index]
                 framesMap[level]['variables'][index]['type'] = var['type']
                 addressResponse = command(f'-data-evaluate-expression --thread 1 --frame {level} &{var["name"]}', token)
                 if "value" in addressResponse[0]["payload"]:
