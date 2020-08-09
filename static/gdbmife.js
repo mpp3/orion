@@ -1,4 +1,4 @@
-// Version 0.3
+// Version 0.3.1
 import { createFunFrame, createFunContainer, drawFunFrame } from "./stack.js";
 
 class Logger {
