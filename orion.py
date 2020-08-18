@@ -2,8 +2,11 @@
 
 import time
 
+import sys
 import os
 import json
+import subprocess
+import shutil
 
 from pygdbmi import gdbmiparser
 from pygdbmi.gdbcontroller import GdbController
@@ -33,25 +36,45 @@ class Timer:
             logFile.write('\n')
 
 
+gdbpath = "/usr/bin/gdb"
+homedir = '/home/manu/projects/orion'
 logFileName = 'log.txt'
-workdir = 'workdir'
+workdir = os.path.join(homedir, 'workdir')
+includedir = os.path.join(homedir, 'include')
 outObjName = 'a.out'
 memFileName = 'mem.txt'
 outputFileName = 'output.txt'
 
 
 def produceObj(filename, sessionToken):
-    compileCommand = f'g++ -g -std=c++11 -I. -Iinclude {os.path.join(workdir, sessionToken, filename)} -o {os.path.join(workdir, sessionToken, outObjName)}'
-    os.system(compileCommand)
+    compileCommand = f'/usr/bin/x86_64-linux-gnu-g++-7 -g -std=c++11 -I{includedir} {os.path.join(workdir, sessionToken, filename)} -o {os.path.join(workdir, sessionToken, outObjName)}'
+    with open(logFileName, 'a') as logfile:
+        logfile.write(compileCommand)
+        logfile.write('\n')
+        myenv = os.environ.copy()
+        path = '/usr/bin:/usr/sbin:/sbin/bin:/home/ubuntu/.local/bin:/usr/local/bin:/usr/local/sbin' 
+        myenv['PATH'] = path + myenv['PATH']
+        subprocess.run(args=compileCommand, shell=True,check=True,stderr=logfile,env=myenv)
 
 
 def processFile(path, filename, sessionToken):
+    destFolder = os.path.join(workdir, sessionToken)
+    with open(logFileName, 'a') as logfile:
+        logfile.write(f'Processing file {filename}.\n')
+        logfile.write(f'Current directory is {os.getcwd()}.\n')
+        logfile.write(f'Destination folder is {destFolder}.\n')
+        logfile.write(f'Create file {os.path.join(workdir, sessionToken, memFileName)}.\n')
     print('Filename is ', filename)
-    os.system(f'mkdir {os.path.join(workdir, sessionToken)}')
-    os.system(f'touch {os.path.join(workdir, sessionToken, memFileName)}')
-    os.system(
-        f'mv {os.path.join(path, filename)} {os.path.join(workdir, sessionToken, filename)}'
-    )
+    if os.path.exists(destFolder):
+        shutil.rmtree(destFolder)
+    os.mkdir(destFolder)
+    with open(os.path.join(workdir, sessionToken, memFileName), 'a') as memfile:
+        pass
+    os.replace(os.path.join(path, filename), os.path.join(workdir, sessionToken, filename))
+#    os.system(f'touch {os.path.join(workdir, sessionToken, memFileName)}')
+#    os.system(
+#        f'mv {os.path.join(path, filename)} {os.path.join(workdir, sessionToken, filename)}'
+#    )
     produceObj(filename, sessionToken)
 
 
@@ -107,23 +130,26 @@ class ProgramState:
 # Dictionary of ProgramState objects indexed by session tokens
 programState = dict()
 
-
 @app.route('/start')
 def start():
     sessionToken = str(sessionTokenGenerator.generateSessionToken())
-    gdbmis[sessionToken] = GdbController()
+    gdbmis[sessionToken] = GdbController(gdb_path=gdbpath)
     programState[sessionToken] = dict()
+    with open(logFileName, 'w') as logfile:
+        logfile.write(f'Spawned GDB instance with token {sessionToken}.')
     return {'sessionToken': sessionToken}
 
 
 @app.route('/code', methods=['GET', 'POST'])
 def code():
+    logfile = open(logFileName, 'a')
     if request.method == 'POST':
         sessionToken = request.form['sessionToken']
+        sys.stderr.write(f'sessionToken received by code(): {sessionToken}')
         print(f'sessionToken received by index(): {sessionToken}')
         if sessionToken == '':
             sessionToken = str(sessionTokenGenerator.generateSessionToken())
-            gdbmis[sessionToken] = GdbController()
+            gdbmis[sessionToken] = GdbController(gdb_path=gdbpath)
             programState[sessionToken] = dict()
         if 'code' not in request.form:
             flash('No code part')
@@ -149,10 +175,13 @@ def code():
             response.extend(gdbmis[sessionToken].write(f'skip -rfu ^__.*'))
             response.extend(gdbmis[sessionToken].write(f'-break-insert main'))
             response.extend(gdbmis[sessionToken].write(f'-exec-run'))
-            # pprint(response)
+            logfile.close()
             return {'sessionToken': sessionToken, 'response': response}
     else:
+        logfile.write('code(): I can only answer to POST requests.')
+        logfile.close()
         return redirect('static/index.html')
+    
 
 
 @app.route('/file', methods=['GET', 'POST'])
@@ -162,7 +191,7 @@ def index():
         print(f'sessionToken received by index(): {sessionToken}')
         if sessionToken == '':
             sessionToken = str(sessionTokenGenerator.generateSessionToken())
-            gdbmis[sessionToken] = GdbController()
+            gdbmis[sessionToken] = GdbController(gdb_path=gdbpath)
             programState[sessionToken] = dict()
         if 'file' not in request.files:
             flash('No file part')
@@ -199,18 +228,22 @@ def hello_world(name):
 
 @app.route('/command')
 def get_command():
+    logfile = open(logFileName, 'a')
     timer.start()
     sessionToken = request.args.get('sessionToken')
     command = request.args.get('command')
     response = gdbmis[sessionToken].write(command,
                                           raise_error_on_timeout=False)
-    # print(response)
     timer.stop(['gdbmis.py', command])
+    logfile.write(f'Sent {command} to GDB instance {sessionToken}.\n')
+    logfile.write(f'Reponse from GDB: {response}.\n')
+    logfile.close()
     return jsonify(response)
 
 
 @app.route('/variable')
 def get_variable():
+    logfile = open(logFileName, 'a')
     timer.start()
     sessionToken = request.args.get('sessionToken')
     varName = request.args.get('name')
@@ -221,6 +254,9 @@ def get_variable():
         f'-data-evaluate-expression --thread 1 --frame {frame} sizeof({varName})'
     )
     timer.stop(['gdbmis.py', varName])
+    logfile.write(f'Got info for variable {varName}\n')
+    logfile.write(f'Address: {addressResponse}. Size: {sizeResponse}.\n')
+    logfile.close()
     return {'address': addressResponse, 'size': sizeResponse}
 
 
@@ -271,10 +307,14 @@ def close_session():
 # This is the new code
 
 def command(command, token, message="done"):
+    logfile = open(logFileName, 'a')
+    logfile.write(f'Sent command {command} to GDB instance {token}.\n')
     timer.start()
+    logfile.write(f'There are {len(gdbmis)} instances.\n')
     ans = gdbmis[token].write(command, expected_message=message, raise_error_on_timeout=False)
-    pprint(ans)
     timer.stop(['gdbmis',command])
+    logfile.write(f'Response: {ans}.\n')
+    logfile.close()
     return ans
 
 def updateState(token, response):
@@ -294,8 +334,13 @@ def updateState(token, response):
             programState[token]['execState'] = "stopped"
 
 def makeStep(token):
-    stepResponse = command('-exec-step', token, "stopped")
-    updateState(token, stepResponse)
+    with open(logFileName, 'a') as logfile:
+        logfile.write('This is makeStep')
+        stepResponse = command('-exec-step', token, "stopped")
+        logfile.write(f'Executed -exec-step, and got {stepResponse}\n')
+        updateState(token, stepResponse)
+        logfile.write(f'State updated for instance {token}\n')
+        logfile.close()
 
 def getVarPos(name, variables):
     counter = 0
@@ -305,6 +350,7 @@ def getVarPos(name, variables):
         counter = counter + 1
 
 def updateFrames(token):
+    logfile = open(logFileName, 'a')
     framesMap = dict()
     framesList = []
     slResponse = command('-stack-list-frames', token)
@@ -331,15 +377,23 @@ def updateFrames(token):
     for frame in sorted(framesMap):
         framesList.append(framesMap[frame])
     programState[token]['frames'] = framesList
+    logfile.write(f'Read frames from GDB instance {token}.\n')
+    logfile.write(f'Frames: {framesList}\n')
+    logfile.close()
 
 def updateMemory(token):
+    logfile = open(logFileName, 'a')
     memory = ''
     with open(os.path.join(workdir, token, memFileName), encoding='ascii') as memoryFile:
         try:
             memory = json.load(memoryFile)
         except:
             print('Memory file is empty')
+            logfile.write('Memory file is empty\n')
     programState[token]['heap'] = memory
+    logfile.write('Memory file written in programState.\n')
+    logfile.write(f'Memory data: {memory}\n')
+    logfile.close()
 
 def updateOutput(token):
     output = ''
@@ -350,13 +404,23 @@ def updateOutput(token):
 @app.route('/step')
 def get_step():
     timer.start()
-    sessionToken = request.args.get('sessionToken')
-    makeStep(sessionToken)
-    updateFrames(sessionToken)
-    updateMemory(sessionToken)
-    updateOutput(sessionToken)
-    timer.stop(['gdbmis.py', 'step'])
-    return {
-        'sessionToken': sessionToken,
-        'programState': programState[sessionToken]
-    }
+    with open(logFileName, 'a') as logfile:
+        logfile.write('This is get_step()\n')
+        sessionToken = request.args.get('sessionToken')
+        logfile.write(f'Starting get_step() with token {sessionToken}\n')
+        makeStep(sessionToken)
+        logfile.write(f'makeStep({sessionToken}) executed.\n')
+        updateFrames(sessionToken)
+        logfile.write(f'updateFrames({sessionToken}) executed.\n')
+        updateMemory(sessionToken)
+        logfile.write(f'updateMemory({sessionToken}) executed.\n')
+        updateOutput(sessionToken)
+        logfile.write(f'updateOutput({sessionToken}) executed.\n')
+        timer.stop(['gdbmis.py', 'step'])
+        return {
+            'sessionToken': sessionToken,
+            'programState': programState[sessionToken]
+        }
+
+if __name__ == '__main__':
+    app.run()
