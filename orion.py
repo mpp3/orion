@@ -36,8 +36,13 @@ class Timer:
             logFile.write('\n')
 
 
-gdbpath = "/usr/bin/gdb"
-homedir = '/home/manu/projects/orion'
+with open('orionconf.json') as orionconfFile:
+    orionconfContents = orionconfFile.read()
+
+orionconf = json.loads(orionconfContents)
+
+gdbpath = orionconf['gdbpath']
+homedir = orionconf['homedir']
 logFileName = 'log.txt'
 workdir = os.path.join(homedir, 'workdir')
 includedir = os.path.join(homedir, 'include')
