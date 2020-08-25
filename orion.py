@@ -1,4 +1,4 @@
-# Version 0.3.1
+# Version 0.3.2
 
 import time
 
@@ -354,6 +354,30 @@ def getVarPos(name, variables):
             return counter
         counter = counter + 1
 
+def getVariablesFromSLVResponse(slvResponse):
+    '''Extracts the list of variables from a dictionary received as response to -stack-list-variables command'''
+    for item in slvResponse:
+        if item['type'] == 'result' and 'payload' in item and 'variables' in item['payload']:
+            return item['payload']['variables']
+    return []
+
+def getVariableAddress(token, frameLevel, variableName):
+    '''Gets the address of a local variable in the given frame for DBG with the given token. 
+    Returns it as string. Returns an empty string if no such variable exists.
+    '''
+    addressResponse = command(f'-data-evaluate-expression --thread 1 --frame {frameLevel} &{variableName}', token)
+    if 'value' in addressResponse[0]['payload']:
+        return addressResponse[0]['payload']['value']
+    return ''
+ 
+def getVariableSize(token, frameLevel, variableName):
+    '''Gets the size of a local variable in the given frame for DBG with the given token. 
+    '''
+    sizeResponse = command(f'-data-evaluate-expression --thread 1 --frame {frameLevel} sizeof({variableName})', token)
+    if 'value' in sizeResponse[0]['payload']:
+        return sizeResponse[0]['payload']['value']
+    return ''
+
 def updateFrames(token):
     logfile = open(logFileName, 'a')
     framesMap = dict()
@@ -364,21 +388,16 @@ def updateFrames(token):
         for frame in flResponse:
             level = frame['level']
             framesMap[level] = {'frameInfo': frame, 'variables': []}
-            
-            vlResponse = command(f'-stack-list-variables --thread 1 --frame {level} --all-values', token)
-            framesMap[level]['variables'] = vlResponse[0]['payload']['variables']
-            vl2Response = command(f'-stack-list-variables --thread 1 --frame {level} --simple-values', token)
-            pprint(vl2Response)
-            for index in range(len(vl2Response[0]['payload']['variables'])):
-                print(index)
-                var = vl2Response[0]['payload']['variables'][index]
+            slvAllResponse = command(f'-stack-list-variables --thread 1 --frame {level} --all-values', token)
+            framesMap[level]['variables'] = getVariablesFromSLVResponse(slvAllResponse)
+            slvSimpleResponse = command(f'-stack-list-variables --thread 1 --frame {level} --simple-values', token)
+            pprint(slvSimpleResponse)
+            varSimpleResponse = getVariablesFromSLVResponse(slvSimpleResponse) 
+            for index in range(len(varSimpleResponse)):
+                var = varSimpleResponse[index]
                 framesMap[level]['variables'][index]['type'] = var['type']
-                addressResponse = command(f'-data-evaluate-expression --thread 1 --frame {level} &{var["name"]}', token)
-                if "value" in addressResponse[0]["payload"]:
-                    framesMap[level]['variables'][index]['address'] = addressResponse[0]["payload"]["value"]
-                sizeResponse = command(f'-data-evaluate-expression --thread 1 --frame {level} sizeof({var["name"]})', token)
-                if "value" in sizeResponse[0]["payload"]:
-                    framesMap[level]['variables'][index]['size'] = sizeResponse[0]["payload"]["value"]
+                framesMap[level]['variables'][index]['address'] = getVariableAddress(token, level, var['name'])
+                framesMap[level]['variables'][index]['size'] = getVariableSize(token, level, var['name'])
     for frame in sorted(framesMap):
         framesList.append(framesMap[frame])
     programState[token]['frames'] = framesList
