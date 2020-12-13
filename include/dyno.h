@@ -1,3 +1,6 @@
+#ifndef _dyno_h_
+#define _dyno_h_
+
 #include <iostream>
 #include <fstream>
 #include <cstring>
@@ -135,3 +138,5 @@ void operator delete(void *address)
 	fputs(dyno::memory.as_str(), mem_file);
 	fclose(mem_file);
 }
+
+#endif

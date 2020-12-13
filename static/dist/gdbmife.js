@@ -460,6 +460,7 @@ var commandTokenGenerator = new TokenGenerator();
 
 function compileAction() {
     let sourceCode = editor.getValue();
+    sourceCode = '#include "dyno.h" // Added by orion\n' + sourceCode;
     sourceElement.textContent = sourceCode;
     Prism.highlightElement(sourceElement);
     codeEditorContainerElement.style.height = "0px";
